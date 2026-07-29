@@ -1,10 +1,17 @@
 // Mock patient roster shared by both portals. `level` is levodopa plasma
 // concentration in ng/mL; therapeutic window is 500–1500 (see data/history.js).
+//
+// Weight and height are clinical fields, not decoration: levodopa dosing and
+// clearance both depend on them. Written out in words rather than symbols so
+// the read-aloud layer speaks them correctly.
 export const patients = [
   {
     id: "kermit",
     name: "Kermit the Frog",
     age: 42,
+    weight: "165 lbs",
+    height: "5 ft 8 in",
+    email: "kermit@parkinsense.app",
     level: 1120,
     unit: "ng/mL",
     inRange: true,
@@ -19,6 +26,9 @@ export const patients = [
     id: "piggy",
     name: "Miss Piggy",
     age: 39,
+    weight: "140 lbs",
+    height: "5 ft 5 in",
+    email: "piggy@parkinsense.app",
     level: 430,
     unit: "ng/mL",
     inRange: false,
@@ -33,6 +43,9 @@ export const patients = [
     id: "fozzie",
     name: "Fozzie Bear",
     age: 51,
+    weight: "190 lbs",
+    height: "5 ft 10 in",
+    email: "fozzie@parkinsense.app",
     level: 990,
     unit: "ng/mL",
     inRange: true,
@@ -47,6 +60,9 @@ export const patients = [
     id: "gonzo",
     name: "Gonzo",
     age: 47,
+    weight: "155 lbs",
+    height: "5 ft 7 in",
+    email: "gonzo@parkinsense.app",
     level: 1740,
     unit: "ng/mL",
     inRange: false,
