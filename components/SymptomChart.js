@@ -1,10 +1,12 @@
 import { ScrollView, Text, View } from "react-native";
 import Svg, { Circle, Line, Polyline } from "react-native-svg";
 
-const HEIGHT = 170;
+// Matches LevelLineChart's dimensions so switching views does not resize the
+// card. The step is wider only because there are far fewer check-ins.
+const HEIGHT = 220;
 const PAD_TOP = 14;
-const PAD_BOTTOM = 22;
-const STEP = 52; // wider than the level chart — far fewer check-ins
+const PAD_BOTTOM = 26;
+const STEP = 68;
 const MAX = 4; // symptom scale is 0-4
 const TICKS = [0, 1, 2, 3, 4];
 
@@ -32,8 +34,8 @@ export default function SymptomChart({ entries }) {
       </View>
 
       <View className="flex-row">
-        {/* Fixed y-axis */}
-        <View style={{ width: 22, height: HEIGHT }}>
+        {/* Fixed y-axis, same width as the level chart's */}
+        <View style={{ width: 40, height: HEIGHT }}>
           {TICKS.map((tick) => (
             <Text
               key={tick}

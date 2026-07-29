@@ -12,6 +12,7 @@ import PatientLogin from "./screens/PatientLogin";
 import DoctorHome from "./screens/doctor/DoctorHome";
 import Messages from "./screens/doctor/Messages";
 import { RoleContext } from "./context/RoleContext";
+import { AccessibilityProvider } from "./context/AccessibilityContext";
 
 // On web, allow ?role=patient or ?role=doctor to pre-select a portal so
 // each can be opened in its own browser tab.
@@ -89,8 +90,10 @@ export default function App() {
   }
 
   return (
-    <RoleContext.Provider value={{ role, setRole, user, setUser }}>
-      {renderBody()}
-    </RoleContext.Provider>
+    <AccessibilityProvider>
+      <RoleContext.Provider value={{ role, setRole, user, setUser }}>
+        {renderBody()}
+      </RoleContext.Provider>
+    </AccessibilityProvider>
   );
 }

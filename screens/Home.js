@@ -34,7 +34,12 @@ export default function Home() {
       <SensorStatus isConnected={patient.connected} batteryPct={patient.batteryPct} />
 
       {/* Current level */}
-      <Card title="Your level">
+      <Card
+        title="Your level"
+        speakText={`Your level is ${patient.level} ng/mL, ${
+          patient.inRange ? "in range" : "out of range"
+        }. Updated ${patient.lastUpdated}.`}
+      >
         <View className="flex-row items-end">
           <Text className="text-6xl font-bold text-gray-900">{patient.level}</Text>
           <Text className="text-2xl text-gray-600 ml-2 mb-2">{patient.unit}</Text>
@@ -70,7 +75,11 @@ export default function Home() {
       </Card>
 
       {/* Trend */}
-      <Card title="Today's trend" subtitle="Midnight to now, in 24 steps">
+      <Card
+        title="Today's trend"
+        subtitle="Midnight to now, in 24 steps"
+        speakText={`Today's trend. ${describeTrend(trend)}`}
+      >
         <Text className="text-base text-gray-700 mb-4">{describeTrend(trend)}</Text>
         <TodayTrend points={trend} />
       </Card>

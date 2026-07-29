@@ -4,6 +4,10 @@ import { useContext, useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { defaultProfile, loadProfile, saveProfile } from "../data/profile";
 import { RoleContext } from "../context/RoleContext";
+import {
+  AccessibilityContext,
+  TEXT_SIZES,
+} from "../context/AccessibilityContext";
 
 export default function Profile() {
   const { role, user, setRole } = useContext(RoleContext);
@@ -160,6 +164,8 @@ export default function Profile() {
         ) : null}
       </View>
 
+      <AccessibilitySettings />
+
       <Pressable
         onPress={() => setRole(null)}
         className="bg-gray-200 rounded-2xl items-center justify-center"
@@ -168,6 +174,96 @@ export default function Profile() {
         <Text className="text-lg font-semibold text-gray-800">Switch portal</Text>
       </Pressable>
     </ScrollView>
+  );
+}
+
+function AccessibilitySettings() {
+  const { readAloud, setReadAloud, textSize, setTextSize, speak } =
+    useContext(AccessibilityContext);
+
+  return (
+    <View className="bg-white rounded-3xl border border-gray-200 p-6 mb-5">
+      <Text className="text-2xl font-bold text-gray-900 mb-1">Accessibility</Text>
+      <Text className="text-base text-gray-600 mb-5">
+        These settings are remembered next time you sign in
+      </Text>
+
+      {/* Read aloud */}
+      <Pressable
+        onPress={() => setReadAloud(!readAloud)}
+        accessibilityRole="switch"
+        accessibilityState={{ checked: readAloud }}
+        accessibilityLabel="Read aloud"
+        className={`flex-row items-center justify-between rounded-2xl px-5 mb-3 ${
+          readAloud ? "bg-black" : "bg-gray-100 border border-gray-300"
+        }`}
+        style={{ minHeight: 64 }}
+      >
+        <View className="flex-row items-center flex-1">
+          <Ionicons
+            name={readAloud ? "volume-high" : "volume-mute"}
+            size={26}
+            color={readAloud ? "#ffffff" : "#374151"}
+          />
+          <Text
+            className={`text-lg font-semibold ml-3 ${
+              readAloud ? "text-white" : "text-gray-800"
+            }`}
+          >
+            Read aloud
+          </Text>
+        </View>
+        <Text className={readAloud ? "text-gray-300" : "text-gray-500"}>
+          {readAloud ? "On" : "Off"}
+        </Text>
+      </Pressable>
+
+      <Text className="text-base text-gray-600 mb-4">
+        When on, a speaker button appears on each section.
+      </Text>
+
+      {readAloud ? (
+        <Pressable
+          onPress={() =>
+            speak("Read aloud is on. Tap any speaker button to hear that section.")
+          }
+          className="bg-gray-100 border border-gray-300 rounded-2xl items-center justify-center mb-5"
+          style={{ minHeight: 56 }}
+        >
+          <Text className="text-base font-semibold text-gray-800">
+            Test the voice
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {/* Text size */}
+      <Text className="text-lg font-semibold text-gray-900 mb-2">Text size</Text>
+      <View className="flex-row">
+        {TEXT_SIZES.map((size) => {
+          const active = size.id === textSize;
+          return (
+            <Pressable
+              key={size.id}
+              onPress={() => setTextSize(size.id)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={`Text size ${size.label}`}
+              className={`flex-1 mx-1 rounded-2xl items-center justify-center ${
+                active ? "bg-black" : "bg-gray-100 border border-gray-300"
+              }`}
+              style={{ minHeight: 64 }}
+            >
+              <Text
+                className={active ? "text-white font-bold" : "text-gray-800"}
+                style={{ fontSize: 14 * size.scale }}
+              >
+                {size.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
