@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import "./global.css";
 import Home from "./screens/Home";
 import History from "./screens/History";
+import Help from "./screens/Help";
 import Profile from "./screens/Profile";
 import RoleSelect from "./screens/RoleSelect";
 import PatientLogin from "./screens/PatientLogin";
 import DoctorHome from "./screens/doctor/DoctorHome";
+import Messages from "./screens/doctor/Messages";
 import { RoleContext } from "./context/RoleContext";
 
 // On web, allow ?role=patient or ?role=doctor to pre-select a portal so
@@ -24,8 +26,10 @@ function getInitialRole() {
 const ICONS = {
   Home: "home",
   History: "stats-chart",
+  Help: "medkit",
   Profile: "person",
   Patients: "people",
+  Messages: "chatbubbles",
 };
 
 function tabScreenOptions({ route }) {
@@ -49,6 +53,7 @@ function PatientPortal() {
     <PatientTabs.Navigator initialRouteName="Home" screenOptions={tabScreenOptions}>
       <PatientTabs.Screen name="Home" component={Home} />
       <PatientTabs.Screen name="History" component={History} />
+      <PatientTabs.Screen name="Help" component={Help} />
       <PatientTabs.Screen name="Profile" component={Profile} />
     </PatientTabs.Navigator>
   );
@@ -58,6 +63,7 @@ function DoctorPortal() {
   return (
     <DoctorTabs.Navigator initialRouteName="Patients" screenOptions={tabScreenOptions}>
       <DoctorTabs.Screen name="Patients" component={DoctorHome} />
+      <DoctorTabs.Screen name="Messages" component={Messages} />
       <DoctorTabs.Screen name="Profile" component={Profile} />
     </DoctorTabs.Navigator>
   );
