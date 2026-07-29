@@ -24,6 +24,7 @@ export function getHistory(patientId) {
         id: `${dayIndex}-${hour}`,
         day,
         shortDay: day.split(",")[1].trim(),
+        hour, // 0-23, so callers can match a clock time without parsing
         time: formatTime(hour),
         level: Math.round(value * factor * (dayIndex === 0 ? 0.93 : 1)),
       });

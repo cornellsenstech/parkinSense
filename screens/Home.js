@@ -8,11 +8,29 @@ import TodayTrend from "../components/TodayTrend";
 import { describeTrend, getTodayTrend } from "../data/history";
 import { patients } from "../data/patients";
 import { RoleContext } from "../context/RoleContext";
+import { AccessibilityContext } from "../context/AccessibilityContext";
+
+// "Miss Piggy" should be greeted as Piggy, not Miss.
+const TITLES = ["mr", "mrs", "ms", "miss", "dr", "prof"];
+
+function firstNameOf(fullName) {
+  const parts = fullName.split(" ");
+  const first = parts[0].replace(".", "").toLowerCase();
+  return TITLES.includes(first) && parts.length > 1 ? parts[1] : parts[0];
+}
+
+function greetingFor(hour) {
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function Home() {
   const { user } = useContext(RoleContext);
+  const { scale } = useContext(AccessibilityContext);
   const patient = patients.find((p) => p.id === user) || patients[0];
-  const firstName = patient.name.split(" ")[0];
+  const firstName = firstNameOf(patient.name);
+  const greeting = greetingFor(new Date().getHours());
 
   const [stiffness, setStiffness] = useState(patient.stiffness);
   const [tremor, setTremor] = useState(patient.tremor);
@@ -24,14 +42,25 @@ export default function Home() {
       className="flex-1 bg-gray-50"
       contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
     >
-      {/* Greeting */}
-      <View className="mb-6">
-        <Text className="text-2xl text-gray-600">Good afternoon,</Text>
-        <Text className="text-5xl font-black text-gray-900">{firstName}</Text>
+      {/* Greeting and device on one compact line each, rather than two big
+          blocks — the level below is what deserves the space. */}
+      <Text
+        style={{
+          fontSize: 30 * scale,
+          lineHeight: 36 * scale,
+          fontWeight: "800",
+          letterSpacing: -0.4,
+          color: "#0f172a",
+        }}
+      >
+        {greeting}, {firstName}
+      </Text>
+      <View style={{ marginTop: 10, marginBottom: 22 }}>
+        <SensorStatus
+          isConnected={patient.connected}
+          batteryPct={patient.batteryPct}
+        />
       </View>
-
-      {/* Device */}
-      <SensorStatus isConnected={patient.connected} batteryPct={patient.batteryPct} />
 
       {/* Current level */}
       <Card
