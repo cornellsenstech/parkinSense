@@ -9,7 +9,7 @@ const BASE = [
 ];
 
 // Each patient absorbs differently, so scale the whole curve.
-const FACTOR = { kermit: 1, piggy: 0.65, fozzie: 0.9, gonzo: 1.25 };
+const FACTOR = { robert: 1, margaret: 0.65, frank: 0.9, helen: 1.25 };
 
 const DAYS = ["Monday, Feb 16", "Tuesday, Feb 17"];
 

@@ -4,14 +4,16 @@
 // Weight and height are clinical fields, not decoration: levodopa dosing and
 // clearance both depend on them. Written out in words rather than symbols so
 // the read-aloud layer speaks them correctly.
+//
+// These are invented people on an example.com domain — no real patient data.
 export const patients = [
   {
-    id: "kermit",
-    name: "Kermit the Frog",
-    age: 42,
+    id: "robert",
+    name: "Robert Ellis",
+    age: 62,
     weight: "165 lbs",
     height: "5 ft 8 in",
-    email: "kermit@parkinsense.app",
+    email: "robert.ellis@example.com",
     level: 1120,
     unit: "ng/mL",
     inRange: true,
@@ -23,12 +25,12 @@ export const patients = [
     status: "stable",
   },
   {
-    id: "piggy",
-    name: "Miss Piggy",
-    age: 39,
+    id: "margaret",
+    name: "Margaret Chen",
+    age: 68,
     weight: "140 lbs",
     height: "5 ft 5 in",
-    email: "piggy@parkinsense.app",
+    email: "margaret.chen@example.com",
     level: 430,
     unit: "ng/mL",
     inRange: false,
@@ -40,12 +42,12 @@ export const patients = [
     status: "attention",
   },
   {
-    id: "fozzie",
-    name: "Fozzie Bear",
-    age: 51,
+    id: "frank",
+    name: "Frank Delgado",
+    age: 71,
     weight: "190 lbs",
     height: "5 ft 10 in",
-    email: "fozzie@parkinsense.app",
+    email: "frank.delgado@example.com",
     level: 990,
     unit: "ng/mL",
     inRange: true,
@@ -57,12 +59,12 @@ export const patients = [
     status: "offline",
   },
   {
-    id: "gonzo",
-    name: "Gonzo",
-    age: 47,
+    id: "helen",
+    name: "Helen Okafor",
+    age: 57,
     weight: "155 lbs",
     height: "5 ft 7 in",
-    email: "gonzo@parkinsense.app",
+    email: "helen.okafor@example.com",
     level: 1740,
     unit: "ng/mL",
     inRange: false,
@@ -74,3 +76,6 @@ export const patients = [
     status: "attention",
   },
 ];
+
+// The clinician shown across the doctor portal.
+export const DOCTOR_NAME = "Dr. Elena Vasquez";

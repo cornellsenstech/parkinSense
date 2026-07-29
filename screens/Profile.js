@@ -2,6 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useContext, useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { READING_WIDTH, page } from "../components/layout";
+import { DOCTOR_NAME } from "../data/patients";
 import { defaultProfile, loadProfile, saveProfile } from "../data/profile";
 import { RoleContext } from "../context/RoleContext";
 import {
@@ -60,7 +62,7 @@ export default function Profile() {
     return (
       <View className="flex-1 items-center justify-center bg-gray-50 p-6">
         <Ionicons name="person-circle" size={96} color="#111827" />
-        <Text className="text-2xl font-bold text-gray-900 mt-3">Dr. Bunsen</Text>
+        <Text className="text-2xl font-bold text-gray-900 mt-3">{DOCTOR_NAME}</Text>
         <Text className="text-base text-gray-500 mb-8">Signed in as Doctor</Text>
         <Pressable
           onPress={() => setRole(null)}
@@ -75,7 +77,7 @@ export default function Profile() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
+      contentContainerStyle={page(READING_WIDTH, 24)}
     >
       <Text className="text-5xl font-black text-gray-900 mb-6">Profile</Text>
 

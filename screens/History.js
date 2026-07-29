@@ -5,6 +5,7 @@ import LevelLineChart, {
   ChartLegend,
 } from "../components/LevelLineChart";
 import SymptomChart from "../components/SymptomChart";
+import { READING_WIDTH, page } from "../components/layout";
 import {
   RANGE_HIGH,
   RANGE_LOW,
@@ -28,7 +29,7 @@ export default function History() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 20, paddingBottom: 48 }}
+      contentContainerStyle={page(READING_WIDTH)}
     >
       <Text className="text-4xl font-bold text-gray-900">History</Text>
       <Text className="text-4xl font-black text-gray-900 mb-5">Overview</Text>

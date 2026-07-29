@@ -7,6 +7,7 @@ import LevelLineChart, {
 } from "../../components/LevelLineChart";
 import StatusBadge from "../../components/StatusBadge";
 import SymptomChart from "../../components/SymptomChart";
+import { WIDE_WIDTH, page } from "../../components/layout";
 import {
   RANGE_HIGH,
   RANGE_LOW,
@@ -75,7 +76,7 @@ export default function PatientDetail({ patient, onBack }) {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+      contentContainerStyle={page(WIDE_WIDTH)}
     >
       <Pressable onPress={onBack} className="flex-row items-center self-start mb-3">
         <Ionicons name="chevron-back" size={18} color="#374151" />

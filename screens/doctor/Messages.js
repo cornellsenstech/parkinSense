@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { READING_WIDTH, page } from "../../components/layout";
 import { getMessages, markRead, replyToMessage } from "../../data/messages";
 
 // The doctor's inbox. Urgent messages sort to the top (see data/messages.js),
@@ -26,7 +27,7 @@ export default function Messages() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+      contentContainerStyle={page(READING_WIDTH)}
     >
       <View className="flex-row items-center justify-between mb-1">
         <Text className="text-3xl font-bold text-gray-900">Messages</Text>

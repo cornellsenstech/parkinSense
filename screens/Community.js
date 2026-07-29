@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import EventMap from "../components/EventMap";
+import { READING_WIDTH, WIDE_WIDTH, page } from "../components/layout";
 import SpeakButton from "../components/SpeakButton";
 import { EVENTS } from "../data/events";
 import { fetchNearbyPlaces, geocode, milesBetween } from "../data/places";
@@ -138,7 +139,7 @@ export default function Community() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: "#f8fafc" }}
-      contentContainerStyle={{ padding: wide ? 28 : 20, paddingBottom: 56 }}
+      contentContainerStyle={page(wide ? WIDE_WIDTH : READING_WIDTH, wide ? 28 : 20)}
     >
       {/* Masthead */}
       <View style={{ flexDirection: "row", alignItems: "flex-start" }}>

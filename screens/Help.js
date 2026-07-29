@@ -2,8 +2,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import Card from "../components/Card";
+import { READING_WIDTH, page } from "../components/layout";
 import { QUICK_MESSAGES, getMessagesFor, sendMessage } from "../data/messages";
-import { patients } from "../data/patients";
+import { DOCTOR_NAME, patients } from "../data/patients";
 import { RoleContext } from "../context/RoleContext";
 
 // The patient's way to reach their care team. Everything here is sized for a
@@ -15,7 +16,7 @@ function buildThreadSpeech(thread) {
   return thread
     .map((m) =>
       m.reply
-        ? `You said: ${m.text}. Doctor Bunsen replied: ${m.reply.text}.`
+        ? `You said: ${m.text}. ${DOCTOR_NAME} replied: ${m.reply.text}.`
         : `You said: ${m.text}. No reply yet.`
     )
     .join(" ");
@@ -56,7 +57,7 @@ export default function Help() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
+      contentContainerStyle={page(READING_WIDTH, 24)}
     >
       <Text className="text-5xl font-black text-gray-900 mb-1">Get help</Text>
       <Text className="text-lg text-gray-600 mb-6">
@@ -153,7 +154,7 @@ export default function Help() {
                       className="text-base font-semibold ml-2"
                       style={{ color: "#166534" }}
                     >
-                      Dr. Bunsen replied
+                      {DOCTOR_NAME} replied
                     </Text>
                   </View>
                   <Text className="text-lg text-gray-900">{message.reply.text}</Text>

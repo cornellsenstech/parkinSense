@@ -1,6 +1,7 @@
 import { useContext, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Card from "../components/Card";
+import { READING_WIDTH, page } from "../components/layout";
 import SensorStatus from "../components/SensorStatusCard";
 import StatusBadge from "../components/StatusBadge";
 import SymptomStepper from "../components/SymptomStepper";
@@ -10,7 +11,7 @@ import { patients } from "../data/patients";
 import { RoleContext } from "../context/RoleContext";
 import { AccessibilityContext } from "../context/AccessibilityContext";
 
-// "Miss Piggy" should be greeted as Piggy, not Miss.
+// Someone recorded as "Dr. Alan Reed" should be greeted as Alan, not Dr.
 const TITLES = ["mr", "mrs", "ms", "miss", "dr", "prof"];
 
 function firstNameOf(fullName) {
@@ -40,7 +41,7 @@ export default function Home() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
+      contentContainerStyle={page(READING_WIDTH, 24)}
     >
       {/* Greeting and device on one compact line each, rather than two big
           blocks — the level below is what deserves the space. */}

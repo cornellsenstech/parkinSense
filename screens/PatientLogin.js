@@ -45,7 +45,7 @@ export default function PatientLogin() {
         <TextInput
           value={username}
           onChangeText={setUsername}
-          placeholder="e.g. kermit"
+          placeholder="e.g. robert"
           placeholderTextColor="#9ca3af"
           autoCapitalize="none"
           autoCorrect={false}
@@ -83,7 +83,7 @@ export default function PatientLogin() {
         </Pressable>
 
         <Text className="text-sm text-gray-500 mt-6 text-center">
-          Demo logins: kermit, piggy, fozzie, gonzo — password: parkinsense
+          Demo logins: robert, margaret, frank, helen — password: parkinsense
         </Text>
       </View>
     </View>

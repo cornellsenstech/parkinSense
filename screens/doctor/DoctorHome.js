@@ -1,7 +1,8 @@
 import { useContext, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import StatusBadge from "../../components/StatusBadge";
-import { patients } from "../../data/patients";
+import { WIDE_WIDTH, page } from "../../components/layout";
+import { DOCTOR_NAME, patients } from "../../data/patients";
 import { RoleContext } from "../../context/RoleContext";
 import PatientDetail from "./PatientDetail";
 
@@ -27,7 +28,7 @@ export default function DoctorHome() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+      contentContainerStyle={page(WIDE_WIDTH)}
     >
       <View className="flex-row items-center justify-between mb-1">
         <Text className="text-3xl font-bold text-gray-900">Patients</Text>
@@ -39,7 +40,7 @@ export default function DoctorHome() {
         </Pressable>
       </View>
       <Text className="text-sm text-gray-500 mb-5">
-        Dr. Bunsen • {patients.length} patients • {needAttention} need attention
+        {DOCTOR_NAME} • {patients.length} patients • {needAttention} need attention
       </Text>
 
       {patients.map((patient) => {
