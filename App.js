@@ -6,6 +6,7 @@ import "./global.css";
 import Home from "./screens/Home";
 import History from "./screens/History";
 import Help from "./screens/Help";
+import Community from "./screens/Community";
 import Profile from "./screens/Profile";
 import RoleSelect from "./screens/RoleSelect";
 import PatientLogin from "./screens/PatientLogin";
@@ -27,6 +28,7 @@ function getInitialRole() {
 const ICONS = {
   Home: "home",
   History: "stats-chart",
+  Community: "location",
   Help: "medkit",
   Profile: "person",
   Patients: "people",
@@ -54,6 +56,7 @@ function PatientPortal() {
     <PatientTabs.Navigator initialRouteName="Home" screenOptions={tabScreenOptions}>
       <PatientTabs.Screen name="Home" component={Home} />
       <PatientTabs.Screen name="History" component={History} />
+      <PatientTabs.Screen name="Community" component={Community} />
       <PatientTabs.Screen name="Help" component={Help} />
       <PatientTabs.Screen name="Profile" component={Profile} />
     </PatientTabs.Navigator>
