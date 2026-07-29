@@ -1,4 +1,4 @@
-// Mock 24-hour levodopa history (one reading per hour), in ng/mL.
+// Mock levodopa history, in ng/mL. One reading per hour across two days.
 // Shaped like a real dosing day: an overnight trough that drops below the
 // therapeutic floor, then three doses that each peak and decay.
 const BASE = [
@@ -11,11 +11,47 @@ const BASE = [
 // Each patient absorbs differently, so scale the whole curve.
 const FACTOR = { kermit: 1, piggy: 0.65, fozzie: 0.9, gonzo: 1.25 };
 
+const DAYS = ["Monday, Feb 16", "Tuesday, Feb 17"];
+
+// Newest last, so the chart reads left to right through time.
 export function getHistory(patientId) {
   const factor = FACTOR[patientId] || 1;
-  return BASE.map((value, hour) => ({
-    label: `${String(hour).padStart(2, "0")}:00`,
-    level: Math.round(value * factor),
+  const readings = [];
+
+  DAYS.forEach((day, dayIndex) => {
+    BASE.forEach((value, hour) => {
+      readings.push({
+        id: `${dayIndex}-${hour}`,
+        day,
+        shortDay: day.split(",")[1].trim(),
+        time: formatTime(hour),
+        level: Math.round(value * factor * (dayIndex === 0 ? 0.93 : 1)),
+      });
+    });
+  });
+
+  return readings;
+}
+
+function formatTime(hour) {
+  const suffix = hour < 12 ? "AM" : "PM";
+  const h = hour % 12 === 0 ? 12 : hour % 12;
+  return `${h}:00 ${suffix}`;
+}
+
+// Symptom check-ins the patient saved, newest first.
+export function getSymptomLog(patientId) {
+  const factor = FACTOR[patientId] || 1;
+  const severity = factor > 1.1 || factor < 0.8 ? 3 : 1; // worse outside the window
+  return [
+    { id: "s1", day: DAYS[1], time: "8:00 PM", stiffness: severity, tremor: severity + 1 },
+    { id: "s2", day: DAYS[1], time: "9:00 AM", stiffness: severity, tremor: severity },
+    { id: "s3", day: DAYS[0], time: "7:00 PM", stiffness: severity + 1, tremor: severity },
+    { id: "s4", day: DAYS[0], time: "8:00 AM", stiffness: severity, tremor: severity },
+  ].map((entry) => ({
+    ...entry,
+    stiffness: Math.min(4, entry.stiffness),
+    tremor: Math.min(4, entry.tremor),
   }));
 }
 
@@ -24,8 +60,12 @@ export function getHistory(patientId) {
 // ~400-1200. Only 200-400 ng/mL separates the "off" state from the "on" state.
 //   https://pmc.ncbi.nlm.nih.gov/articles/PMC1401168/
 //   https://pmc.ncbi.nlm.nih.gov/articles/PMC9686322/
+export const RANGE_LOW = 500;
+export const RANGE_HIGH = 1500;
+export const CHART_MAX = 2000;
+
 export function levelTone(level) {
-  if (level < 500) return { color: "#2563eb", label: "Low" };
-  if (level > 1500) return { color: "#dc2626", label: "High" };
+  if (level < RANGE_LOW) return { color: "#2563eb", label: "Low" };
+  if (level > RANGE_HIGH) return { color: "#dc2626", label: "High" };
   return { color: "#16a34a", label: "In range" };
 }
