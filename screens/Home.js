@@ -1,9 +1,11 @@
 import { useContext, useState } from "react";
-import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import Card from "../components/Card";
 import SensorStatus from "../components/SensorStatusCard";
 import StatusBadge from "../components/StatusBadge";
 import SymptomStepper from "../components/SymptomStepper";
+import TodayTrend from "../components/TodayTrend";
+import { describeTrend, getTodayTrend } from "../data/history";
 import { patients } from "../data/patients";
 import { RoleContext } from "../context/RoleContext";
 
@@ -14,6 +16,8 @@ export default function Home() {
 
   const [stiffness, setStiffness] = useState(patient.stiffness);
   const [tremor, setTremor] = useState(patient.tremor);
+
+  const trend = getTodayTrend(patient.id);
 
   return (
     <ScrollView
@@ -66,14 +70,9 @@ export default function Home() {
       </Card>
 
       {/* Trend */}
-      <Card title="Today's trend">
-        <Text className="text-base text-gray-700 mb-4">
-          Your levels stayed in range through the afternoon.
-        </Text>
-        <Image
-          source={require("../images/output.png")}
-          style={{ width: "100%", height: 160, resizeMode: "contain" }}
-        />
+      <Card title="Today's trend" subtitle="Midnight to now, in 24 steps">
+        <Text className="text-base text-gray-700 mb-4">{describeTrend(trend)}</Text>
+        <TodayTrend points={trend} />
       </Card>
     </ScrollView>
   );

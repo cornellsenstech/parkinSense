@@ -4,6 +4,7 @@ import LevelLineChart, {
   ChartFooter,
   ChartLegend,
 } from "../components/LevelLineChart";
+import SymptomChart from "../components/SymptomChart";
 import {
   RANGE_HIGH,
   RANGE_LOW,
@@ -98,6 +99,16 @@ export default function History() {
         <Stat value={`${percentInRange}%`} label="Time in range" divider />
         <Stat value={readings.length} label="Readings" divider />
       </View>
+
+      {/* Symptom graph, only relevant to the symptoms view */}
+      {view === "Symptoms" ? (
+        <View className="bg-white rounded-3xl border border-gray-200 p-5 mb-5">
+          <Text className="text-xl font-bold text-gray-900 mb-3">
+            Symptoms over time
+          </Text>
+          <SymptomChart entries={symptoms} />
+        </View>
+      ) : null}
 
       {/* The list itself */}
       {view === "Concentration"

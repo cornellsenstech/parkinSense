@@ -39,20 +39,82 @@ function formatTime(hour) {
   return `${h}:00 ${suffix}`;
 }
 
-// Symptom check-ins the patient saved, newest first.
-export function getSymptomLog(patientId) {
+// Splits midnight -> now into exactly 24 segments, whatever the time of day.
+// A fixed segment count keeps the shape of the day comparable at 9am and 9pm,
+// instead of the chart stretching as hours accumulate.
+export function getTodayTrend(patientId, now = new Date()) {
   const factor = FACTOR[patientId] || 1;
-  const severity = factor > 1.1 || factor < 0.8 ? 3 : 1; // worse outside the window
-  return [
-    { id: "s1", day: DAYS[1], time: "8:00 PM", stiffness: severity, tremor: severity + 1 },
-    { id: "s2", day: DAYS[1], time: "9:00 AM", stiffness: severity, tremor: severity },
-    { id: "s3", day: DAYS[0], time: "7:00 PM", stiffness: severity + 1, tremor: severity },
-    { id: "s4", day: DAYS[0], time: "8:00 AM", stiffness: severity, tremor: severity },
-  ].map((entry) => ({
-    ...entry,
-    stiffness: Math.min(4, entry.stiffness),
-    tremor: Math.min(4, entry.tremor),
-  }));
+  const minutesSoFar = now.getHours() * 60 + now.getMinutes();
+  const perSegment = Math.max(minutesSoFar / 24, 1); // guard just after midnight
+
+  const points = [];
+  for (let i = 0; i < 24; i++) {
+    const minute = perSegment * (i + 1);
+    points.push({
+      minute,
+      label: clockLabel(minute),
+      level: Math.round(levelAtMinute(minute) * factor),
+    });
+  }
+  return points;
+}
+
+// Reads the hourly curve, interpolating between the two nearest hours so a
+// segment boundary that lands mid-hour still gets a sensible value.
+function levelAtMinute(minute) {
+  const hour = minute / 60;
+  const index = Math.min(Math.floor(hour), BASE.length - 1);
+  const next = Math.min(index + 1, BASE.length - 1);
+  const fraction = hour - index;
+  return BASE[index] + (BASE[next] - BASE[index]) * fraction;
+}
+
+function clockLabel(minute) {
+  const h24 = Math.floor(minute / 60) % 24;
+  const mins = Math.round(minute % 60);
+  const suffix = h24 < 12 ? "AM" : "PM";
+  const h = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h}:${String(mins).padStart(2, "0")} ${suffix}`;
+}
+
+// One plain sentence describing the day, derived from the data rather than
+// hardcoded — so it stays true and can be read aloud later.
+export function describeTrend(points) {
+  if (!points.length) return "";
+  const last = points[points.length - 1].level;
+  const previous = points.length > 1 ? points[points.length - 2].level : last;
+  const inRange = points.filter(
+    (p) => p.level >= RANGE_LOW && p.level <= RANGE_HIGH
+  ).length;
+  const percent = Math.round((inRange / points.length) * 100);
+  const direction = last > previous ? "rising" : last < previous ? "falling" : "steady";
+  return `Now ${last} ng/mL and ${direction}. ${percent}% of today has been in range.`;
+}
+
+// Symptom check-ins, one every four hours, oldest first.
+//
+// Severity is derived from the level at that moment rather than random: real
+// symptoms track the therapeutic window, so a patient reports stiffness and
+// tremor when their level has drifted out of it. That correlation is the whole
+// clinical point of the device, so the mock data should show it.
+export function getSymptomLog(patientId) {
+  return getHistory(patientId)
+    .filter((reading, i) => i % 4 === 0)
+    .map((reading) => {
+      const below = reading.level < RANGE_LOW;
+      const above = reading.level > RANGE_HIGH;
+      const severity = below ? 3 : above ? 2 : 0;
+
+      return {
+        id: `s-${reading.id}`,
+        day: reading.day,
+        time: reading.time,
+        level: reading.level,
+        // Tremor runs a little worse than stiffness when the level is low.
+        stiffness: severity,
+        tremor: Math.min(4, below ? severity + 1 : severity),
+      };
+    });
 }
 
 // Therapeutic window for levodopa is 500-1500 ng/mL.
