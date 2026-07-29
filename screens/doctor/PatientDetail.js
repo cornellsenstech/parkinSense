@@ -55,14 +55,22 @@ export default function PatientDetail({ patient, onBack }) {
   const percentInRange = Math.round((inRange / readings.length) * 100);
   const days = [...new Set(readings.map((r) => r.day))];
 
-  // The clinically interesting number: how bad symptoms get when the level
-  // has drifted outside the therapeutic window.
-  const outOfRange = symptoms.filter(
-    (s) => s.level < RANGE_LOW || s.level > RANGE_HIGH
-  );
-  const worstOut = outOfRange.length
-    ? Math.max(...outOfRange.map((s) => Math.max(s.stiffness, s.tremor)))
-    : 0;
+  // An observation built from this patient's own numbers. Cites the actual
+  // lowest and highest readings and when they happened, so two patients never
+  // get the same sentence.
+  const lowest = readings.reduce((a, b) => (b.level < a.level ? b : a));
+  const highest = readings.reduce((a, b) => (b.level > a.level ? b : a));
+  const belowCount = readings.filter((r) => r.level < RANGE_LOW).length;
+  const aboveCount = readings.filter((r) => r.level > RANGE_HIGH).length;
+
+  const observation = buildObservation({
+    percentInRange,
+    lowest,
+    highest,
+    belowCount,
+    aboveCount,
+    symptoms,
+  });
 
   return (
     <ScrollView
@@ -136,11 +144,7 @@ export default function PatientDetail({ patient, onBack }) {
             clinician writes and is never overwritten by it. */}
         <View className="flex-row bg-gray-50 border border-gray-200 rounded-lg p-3 mb-3">
           <Ionicons name="information-circle" size={16} color="#6b7280" />
-          <Text className="text-sm text-gray-600 ml-2 flex-1">
-            {worstOut > 0
-              ? `Symptoms reach ${worstOut}/4 when levels sit outside the 500–1500 ng/mL window.`
-              : "Levels stayed within the therapeutic window across this period."}
-          </Text>
+          <Text className="text-sm text-gray-600 ml-2 flex-1">{observation}</Text>
         </View>
 
         <TextInput
@@ -171,6 +175,53 @@ export default function PatientDetail({ patient, onBack }) {
       </Section>
     </ScrollView>
   );
+}
+
+// Picks out whichever pattern this patient's data actually shows, and names
+// the real numbers behind it. Ordered so the more urgent pattern wins when a
+// patient drifts both ways.
+function buildObservation({
+  percentInRange,
+  lowest,
+  highest,
+  belowCount,
+  aboveCount,
+  symptoms,
+}) {
+  const parts = [`${percentInRange}% of readings were inside the window.`];
+
+  if (aboveCount > 0) {
+    parts.push(
+      `Peaked at ${highest.level} ng/mL (${highest.time}), above 1500 on ${aboveCount} reading${
+        aboveCount === 1 ? "" : "s"
+      } — dyskinesia risk.`
+    );
+  }
+
+  if (belowCount > 0) {
+    parts.push(
+      `Dropped to ${lowest.level} ng/mL (${lowest.time}), below 500 on ${belowCount} reading${
+        belowCount === 1 ? "" : "s"
+      }.`
+    );
+  }
+
+  if (aboveCount === 0 && belowCount === 0) {
+    parts.push(
+      `Stayed between ${lowest.level} and ${highest.level} ng/mL throughout.`
+    );
+  }
+
+  // Tie the symptoms to the levels, which is the point of the pairing.
+  const outOfRange = symptoms.filter((s) => s.level < 500 || s.level > 1500);
+  if (outOfRange.length) {
+    const worst = Math.max(
+      ...outOfRange.map((s) => Math.max(s.stiffness, s.tremor))
+    );
+    parts.push(`Symptoms reached ${worst}/4 during those periods.`);
+  }
+
+  return parts.join(" ");
 }
 
 function Stat({ value, label, divider }) {
