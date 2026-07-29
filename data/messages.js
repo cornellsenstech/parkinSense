@@ -51,13 +51,40 @@ export async function sendMessage({ patientId, patientName, text, urgent }) {
 }
 
 export async function markRead(messageId) {
+  return update(messageId, (message) => ({ ...message, read: true }));
+}
+
+// A doctor's reply is attached to the message it answers, so the patient sees
+// the exchange as a thread rather than a loose inbox. Replying also marks the
+// message handled — answering it is what "handled" means.
+export async function replyToMessage(messageId, text) {
+  const reply = {
+    text: text.trim(),
+    sentAt: Date.now(),
+    timeLabel: new Date().toLocaleTimeString([], {
+      hour: "numeric",
+      minute: "2-digit",
+    }),
+  };
+  return update(messageId, (message) => ({ ...message, reply, read: true }));
+}
+
+// Read, change one message, write back. Shared so every mutation follows the
+// same path and can't drift.
+async function update(messageId, change) {
   try {
     const saved = await AsyncStorage.getItem(KEY);
     const list = saved ? JSON.parse(saved) : [];
-    const next = list.map((m) => (m.id === messageId ? { ...m, read: true } : m));
+    const next = list.map((m) => (m.id === messageId ? change(m) : m));
     await AsyncStorage.setItem(KEY, JSON.stringify(next));
     return true;
   } catch {
     return false;
   }
+}
+
+// The patient only sees their own messages.
+export async function getMessagesFor(patientId) {
+  const all = await getMessages();
+  return all.filter((m) => m.patientId === patientId);
 }

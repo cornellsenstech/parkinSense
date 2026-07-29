@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
-import { getMessages, markRead } from "../../data/messages";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { getMessages, markRead, replyToMessage } from "../../data/messages";
 
 // The doctor's inbox. Urgent messages sort to the top (see data/messages.js),
 // because the ordering is the triage.
@@ -79,6 +79,17 @@ export default function Messages() {
 
           <Text className="text-sm text-gray-800">{message.text}</Text>
 
+          {message.reply ? (
+            <View className="mt-3 border-l-2 border-gray-300 pl-3">
+              <Text className="text-xs font-semibold text-gray-500 mb-0.5">
+                Your reply • {message.reply.timeLabel}
+              </Text>
+              <Text className="text-sm text-gray-700">{message.reply.text}</Text>
+            </View>
+          ) : (
+            <ReplyBox messageId={message.id} onDone={refresh} />
+          )}
+
           {!message.read ? (
             <Pressable
               onPress={() => markRead(message.id).then(refresh)}
@@ -88,11 +99,50 @@ export default function Messages() {
                 Mark as handled
               </Text>
             </Pressable>
-          ) : (
-            <Text className="text-xs text-gray-400 mt-2">Handled</Text>
-          )}
+          ) : null}
         </View>
       ))}
     </ScrollView>
+  );
+}
+
+function ReplyBox({ messageId, onDone }) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function send() {
+    if (!text.trim() || sending) return; // guard against a double tap
+    setSending(true);
+    await replyToMessage(messageId, text);
+    setText("");
+    setSending(false);
+    onDone();
+  }
+
+  return (
+    <View className="mt-3">
+      <TextInput
+        value={text}
+        onChangeText={setText}
+        placeholder="Write a reply…"
+        placeholderTextColor="#9ca3af"
+        multiline
+        textAlignVertical="top"
+        accessibilityLabel="Reply to this message"
+        className="border border-gray-300 rounded-lg p-2 text-sm text-gray-900 bg-white"
+        style={{ minHeight: 56 }}
+      />
+      <Pressable
+        onPress={send}
+        disabled={!text.trim() || sending}
+        className={`self-start mt-2 rounded-lg px-4 py-2 ${
+          text.trim() ? "bg-gray-900" : "bg-gray-300"
+        }`}
+      >
+        <Text className="text-sm font-medium text-white">
+          {sending ? "Sending…" : "Send reply"}
+        </Text>
+      </Pressable>
+    </View>
   );
 }

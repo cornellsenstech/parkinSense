@@ -1,20 +1,44 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useContext, useState } from "react";
+import { useCallback, useContext, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import Card from "../components/Card";
-import { QUICK_MESSAGES, sendMessage } from "../data/messages";
+import { QUICK_MESSAGES, getMessagesFor, sendMessage } from "../data/messages";
 import { patients } from "../data/patients";
 import { RoleContext } from "../context/RoleContext";
 
 // The patient's way to reach their care team. Everything here is sized for a
 // bad tremor episode — the worst possible moment for fine motor control — so
 // the common messages are one large tap, with typing as the fallback.
+// Reads the whole exchange in order, so a patient who cannot read the screen
+// can still hear whether their doctor has answered.
+function buildThreadSpeech(thread) {
+  return thread
+    .map((m) =>
+      m.reply
+        ? `You said: ${m.text}. Doctor Bunsen replied: ${m.reply.text}.`
+        : `You said: ${m.text}. No reply yet.`
+    )
+    .join(" ");
+}
+
 export default function Help() {
   const { user } = useContext(RoleContext);
   const patient = patients.find((p) => p.id === user) || patients[0];
 
   const [custom, setCustom] = useState("");
   const [sent, setSent] = useState("");
+  const [thread, setThread] = useState([]);
+
+  const refresh = useCallback(() => {
+    getMessagesFor(patient.id).then(setThread);
+  }, [patient.id]);
+
+  useEffect(() => {
+    refresh();
+    // The doctor replies from the other portal, so check back periodically.
+    const timer = setInterval(refresh, 3000);
+    return () => clearInterval(timer);
+  }, [refresh]);
 
   async function send(text, urgent) {
     if (!text.trim()) return;
@@ -26,6 +50,7 @@ export default function Help() {
     });
     setSent(ok ? "Sent to your care team" : "Could not send — try again");
     setCustom("");
+    refresh();
   }
 
   return (
@@ -102,6 +127,49 @@ export default function Help() {
           <Text className="text-white text-lg font-semibold">Send message</Text>
         </Pressable>
       </Card>
+
+      {thread.length ? (
+        <Card
+          title="Your messages"
+          speakText={buildThreadSpeech(thread)}
+        >
+          {thread.map((message) => (
+            <View key={message.id} className="mb-4">
+              {/* What the patient sent */}
+              <View className="bg-gray-100 rounded-2xl p-4">
+                <Text className="text-lg text-gray-900">{message.text}</Text>
+                <Text className="text-sm text-gray-500 mt-1">
+                  You • {message.timeLabel}
+                  {message.urgent ? " • urgent" : ""}
+                </Text>
+              </View>
+
+              {/* The reply, if the care team has answered */}
+              {message.reply ? (
+                <View className="bg-green-50 border border-green-200 rounded-2xl p-4 mt-2">
+                  <View className="flex-row items-center mb-1">
+                    <Ionicons name="medkit" size={20} color="#166534" />
+                    <Text
+                      className="text-base font-semibold ml-2"
+                      style={{ color: "#166534" }}
+                    >
+                      Dr. Bunsen replied
+                    </Text>
+                  </View>
+                  <Text className="text-lg text-gray-900">{message.reply.text}</Text>
+                  <Text className="text-sm text-gray-500 mt-1">
+                    {message.reply.timeLabel}
+                  </Text>
+                </View>
+              ) : (
+                <Text className="text-base text-gray-500 mt-2">
+                  Waiting for a reply…
+                </Text>
+              )}
+            </View>
+          ))}
+        </Card>
+      ) : null}
 
       <Text className="text-base text-gray-600 text-center">
         In a life-threatening emergency, call your local emergency number.
