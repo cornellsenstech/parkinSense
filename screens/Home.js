@@ -1,93 +1,80 @@
-import Slider from "@react-native-community/slider";
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import Card from "../components/Card";
 import SensorStatus from "../components/SensorStatusCard";
+import StatusBadge from "../components/StatusBadge";
+import SymptomStepper from "../components/SymptomStepper";
+import { patients } from "../data/patients";
+import { RoleContext } from "../context/RoleContext";
 
 export default function Home() {
-  const [stiffness, setStiffness] = useState(0);
-  const [tremor, setTremor] = useState(0);
-  // variables for sensor status
-  const [isConnected, setIsConnected] = useState(false);
-  const [batteryPct, setBatteryPct] = useState(49);
+  const { user } = useContext(RoleContext);
+  const patient = patients.find((p) => p.id === user) || patients[0];
+  const firstName = patient.name.split(" ")[0];
+
+  const [stiffness, setStiffness] = useState(patient.stiffness);
+  const [tremor, setTremor] = useState(patient.tremor);
+
   return (
-    <ScrollView className="flex-1 bg-white p-10">
-      <Text className="text-4xl text-left font-semibold">Good Afternoon</Text>
-      <Text className="text-4xl text-left font-black mb-7">Kermit!</Text>
-hhh
-      <SensorStatus isConnected={true} batteryPct={10}/>
-
-      <View className="bg-gray-100 rounded-xl p-4 mb-6">
-        <Text className="text-xl pt-2">Current Levels</Text>
-
-        <View className="flex-row items-end mt-4">
-          <Text className="text-5xl font-semibold">2.8</Text>
-          <Text className="text-2xl text-gray-500 ml-2 mb-1">ng/mL</Text>
-        </View>
-
-        <View className="self-start flex-row items-center rounded-full bg-green-200 px-4 py-2 mt-3">
-          <View className="w-2 h-2 rounded-full bg-green-400 mr-2" />
-          <Text className="text-sm font-medium">In range</Text>
-        </View>
-
-        <Text className="text-sm text-gray-500 mt-3">
-          Updated 4 minutes ago
-        </Text>
+    <ScrollView
+      className="flex-1 bg-gray-50"
+      contentContainerStyle={{ padding: 24, paddingBottom: 48 }}
+    >
+      {/* Greeting */}
+      <View className="mb-6">
+        <Text className="text-2xl text-gray-600">Good afternoon,</Text>
+        <Text className="text-5xl font-black text-gray-900">{firstName}</Text>
       </View>
 
-      <View className="flex-1 bg-white mb-5">
-        <Text className="text-2xl font-semibold mb-2">
-          How are you feeling?
-        </Text>
+      {/* Device */}
+      <SensorStatus isConnected={patient.connected} batteryPct={patient.batteryPct} />
 
-        <Text className="text-sm text-gray-500 mb-6">0 = none, 4 = severe</Text>
-
-        <View className="bg-gray-100 rounded-2xl p-3">
-          <Text className="text-base font-medium mb-1">Stiffness</Text>
-
-          <Slider
-            minimumValue={0}
-            maximumValue={4}
-            step={1}
-            value={stiffness}
-            onValueChange={setStiffness}
-            minimumTrackTintColor="#86efac"
-            maximumTrackTintColor="#e5e7eb"
-            thumbTintColor="#86efac"
-          />
-
-          <Text className="text-sm text-gray-500 mt-2">{stiffness}/4</Text>
-
-          <Text className="text-base font-medium mb-2">Tremor</Text>
-
-          <Slider
-            minimumValue={0}
-            maximumValue={4}
-            step={1}
-            value={tremor}
-            onValueChange={setTremor}
-            minimumTrackTintColor="#86efac"
-            maximumTrackTintColor="#e5e7eb"
-            thumbTintColor="#86efac"
-          />
-
-          <Text className="text-sm text-gray-500 mt-1">{tremor}/4</Text>
+      {/* Current level */}
+      <Card title="Your level">
+        <View className="flex-row items-end">
+          <Text className="text-6xl font-bold text-gray-900">{patient.level}</Text>
+          <Text className="text-2xl text-gray-600 ml-2 mb-2">{patient.unit}</Text>
         </View>
+        <View className="mt-4">
+          <StatusBadge
+            tone={patient.inRange ? "good" : "warn"}
+            label={patient.inRange ? "In range" : "Out of range"}
+          />
+        </View>
+        <Text className="text-base text-gray-600 mt-4">
+          Updated {patient.lastUpdated}
+        </Text>
+      </Card>
 
-       
+      {/* Symptom check-in */}
+      <Card
+        title="How are you feeling?"
+        subtitle="Tap the level that fits — 0 is none, 4 is severe"
+      >
+        <SymptomStepper label="Stiffness" value={stiffness} onChange={setStiffness} />
+        <SymptomStepper label="Tremor" value={tremor} onChange={setTremor} />
 
         <Pressable
-          onPress={() => console.log("Saved stiffness:", stiffness)}
-          className="bg-black rounded-xl py-3 mt-6 items-center"
+          onPress={() => console.log("Saved:", { user, stiffness, tremor })}
+          accessibilityRole="button"
+          accessibilityLabel="Save today's symptoms"
+          className="bg-black rounded-2xl items-center justify-center mt-2"
+          style={{ minHeight: 56 }}
         >
-          <Text className="text-white font-semibold">Save</Text>
+          <Text className="text-white text-lg font-semibold">Save</Text>
         </Pressable>
-      </View>
-      <Text className="text-2xl font-semibold mb-2">
-          Today&apos;s Trend
+      </Card>
+
+      {/* Trend */}
+      <Card title="Today's trend">
+        <Text className="text-base text-gray-700 mb-4">
+          Your levels stayed in range through the afternoon.
         </Text>
-        <Image source={require("../images/output.png")} style={{ width: 300, height: 150 }}/>
-
-
+        <Image
+          source={require("../images/output.png")}
+          style={{ width: "100%", height: 160, resizeMode: "contain" }}
+        />
+      </Card>
     </ScrollView>
   );
 }

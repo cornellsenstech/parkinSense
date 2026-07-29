@@ -1,19 +1,24 @@
-import React from "react";
-import { View, Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { Text, View } from "react-native";
 
-export default function SensorStatus({isConnected,batteryPct}){
-    const statusText = isConnected ? "Connected" : "Not Connected";
-    const isReady = isConnected && batteryPct >= 20;
-    const subText = isConnected
-    ? `Battery: ${batteryPct ?? "--"}% • ${isReady ? "Ready" : "Battery low — please charge"}`
+export default function SensorStatus({ isConnected, batteryPct }) {
+  const isReady = isConnected && batteryPct >= 20;
+
+  const color = !isConnected ? "#991b1b" : isReady ? "#166534" : "#9a3412";
+  const icon = !isConnected ? "close-circle" : isReady ? "bluetooth" : "battery-half";
+  const subText = isConnected
+    ? `Battery ${batteryPct}% • ${isReady ? "Ready" : "Battery low — please charge"}`
     : "Make sure your sensor is nearby";
-    return (
-        <View className = "bg-gray-100 rounded-xl p-4 mb-6">
-            <View className = "flex-row">
-                <View className = {`w-2 h-2 rounded-full ${isConnected? isReady? "bg-green-500" : "bg-orange-500" : "bg-red-500"} mr-2 mt-3`}></View>
-                <Text className="text-lg font-bold">{statusText}</Text>
-            </View>
-            <Text className="mt-1 text-sm text-gray-600">{subText}</Text>
-        </View>
-    );
+
+  return (
+    <View className="bg-white rounded-3xl border border-gray-200 p-6 mb-5">
+      <View className="flex-row items-center">
+        <Ionicons name={icon} size={28} color={color} />
+        <Text className="text-2xl font-bold text-gray-900 ml-2">
+          {isConnected ? "Connected" : "Not connected"}
+        </Text>
+      </View>
+      <Text className="mt-2 text-lg text-gray-700">{subText}</Text>
+    </View>
+  );
 }
