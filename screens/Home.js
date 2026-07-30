@@ -8,6 +8,7 @@ import StatusBadge from "../components/StatusBadge";
 import SymptomStepper from "../components/SymptomStepper";
 import TodayTrend from "../components/TodayTrend";
 import { describeTrend, getTodayTrend } from "../data/history";
+import { describeForecast, forecastOff } from "../data/forecast";
 import { removeEntry, saveEntry } from "../data/symptomLog";
 import { patients } from "../data/patients";
 import { RoleContext } from "../context/RoleContext";
@@ -43,6 +44,7 @@ export default function Home() {
   // because undoing should put the controls back where they were.
   const [justSaved, setJustSaved] = useState(null);
   const [saveError, setSaveError] = useState("");
+  const [showForecastInfo, setShowForecastInfo] = useState(false);
   const undoTimer = useRef(null);
 
   // A generous window — a tremor or a moment of hesitation should not cost you
@@ -76,6 +78,7 @@ export default function Home() {
   }
 
   const trend = getTodayTrend(patient.id);
+  const forecast = describeForecast(forecastOff(patient.id));
 
   return (
     <ScrollView
@@ -128,6 +131,16 @@ export default function Home() {
           Updated {patient.lastUpdated}
         </Text>
       </Card>
+
+      {/* Forecast — the one thing the device knows that the patient does not */}
+      {forecast ? (
+        <ForecastCard
+          forecast={forecast}
+          scale={scale}
+          showInfo={showForecastInfo}
+          onToggleInfo={() => setShowForecastInfo(!showForecastInfo)}
+        />
+      ) : null}
 
       {/* Trend */}
       <Card
@@ -234,5 +247,145 @@ export default function Home() {
       </View>
       </View>
     </ScrollView>
+  );
+}
+
+// The forecast, with an (i) that explains where the number comes from.
+//
+// Patients are being shown a prediction about their own body, so how it was
+// worked out and its limits have to be one tap away — and it must never read as
+// an instruction to change medication.
+function ForecastCard({ forecast, scale, showInfo, onToggleInfo }) {
+  const tone =
+    forecast.tone === "warn"
+      ? { ink: "#9a3412", bg: "#ffedd5", icon: "trending-down" }
+      : forecast.tone === "good"
+      ? { ink: "#166534", bg: "#dcfce7", icon: "trending-up" }
+      : { ink: "#3d5257", bg: "#eaf0f1", icon: "remove-outline" };
+
+  return (
+    <View className="bg-white rounded-3xl border border-gray-200 p-6 mb-5">
+      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+        <Text
+          style={{
+            flex: 1,
+            fontSize: 24 * scale,
+            lineHeight: 30 * scale,
+            fontWeight: "700",
+            color: "#0f172a",
+          }}
+        >
+          Next off period
+        </Text>
+
+        <Pressable
+          onPress={onToggleInfo}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: showInfo }}
+          accessibilityLabel="What does this mean?"
+          style={{
+            width: 48,
+            height: 48,
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 24,
+            backgroundColor: showInfo ? "#0f172a" : "#f1f5f9",
+            borderWidth: 1,
+            borderColor: showInfo ? "#0f172a" : "#cbd5e1",
+          }}
+        >
+          <Ionicons
+            name="information"
+            size={24}
+            color={showInfo ? "#ffffff" : "#334155"}
+          />
+        </Pressable>
+      </View>
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: tone.bg,
+          borderRadius: 16,
+          padding: 16,
+          marginTop: 14,
+        }}
+      >
+        <Ionicons name={tone.icon} size={30} color={tone.ink} />
+        <View style={{ marginLeft: 12, flex: 1 }}>
+          <Text
+            style={{
+              fontSize: 24 * scale,
+              lineHeight: 30 * scale,
+              fontWeight: "800",
+              color: tone.ink,
+            }}
+          >
+            {forecast.headline}
+          </Text>
+          <Text
+            style={{
+              fontSize: 17 * scale,
+              lineHeight: 24 * scale,
+              color: tone.ink,
+              marginTop: 2,
+            }}
+          >
+            {forecast.detail}
+          </Text>
+        </View>
+      </View>
+
+      {showInfo ? (
+        <View
+          style={{
+            marginTop: 14,
+            padding: 16,
+            borderRadius: 16,
+            backgroundColor: "#f8fafc",
+            borderWidth: 1,
+            borderColor: "#cbd5e1",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: 17 * scale,
+              lineHeight: 25 * scale,
+              color: "#3d5257",
+            }}
+          >
+            Your medicine clears from your blood at a steady rate. By comparing
+            your two most recent readings, the app works out how fast your level
+            is dropping and estimates when it will fall below your usual range —
+            the point where symptoms often return.
+          </Text>
+          <Text
+            style={{
+              fontSize: 17 * scale,
+              lineHeight: 25 * scale,
+              color: "#3d5257",
+              marginTop: 12,
+            }}
+          >
+            It is an estimate, not a certainty. Food, activity and sleep all
+            change how quickly your level falls, and no estimate is shown when
+            your level is rising or the readings are unclear.
+          </Text>
+          <Text
+            style={{
+              fontSize: 17 * scale,
+              lineHeight: 25 * scale,
+              fontWeight: "700",
+              color: "#9a3412",
+              marginTop: 12,
+            }}
+          >
+            Never change your medication or its timing based on this. Talk to
+            your care team first.
+          </Text>
+        </View>
+      ) : null}
+    </View>
   );
 }
