@@ -37,6 +37,21 @@ export async function saveEntry(patientId, { stiffness, tremor }) {
   }
 }
 
+// The level recorded alongside each check-in, so a saved entry can be shown
+// against what the sensor said at the time.
+export function withLevels(entries, readings) {
+  if (!readings.length) return entries;
+  return entries.map((entry) => {
+    const when = new Date(entry.savedAt);
+    const hour = when.getHours();
+    const match = readings.filter((r) => r.hour === hour);
+    const level = match.length
+      ? Math.round(match.reduce((sum, r) => sum + r.level, 0) / match.length)
+      : null;
+    return { ...entry, hour, level };
+  });
+}
+
 export async function removeEntry(patientId, entryId) {
   try {
     const current = await loadEntries(patientId);

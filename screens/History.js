@@ -14,6 +14,7 @@ import {
   levelTone,
 } from "../data/history";
 import { RoleContext } from "../context/RoleContext";
+import { AccessibilityContext } from "../context/AccessibilityContext";
 
 export default function History() {
   const { user } = useContext(RoleContext);
@@ -21,6 +22,7 @@ export default function History() {
   const symptoms = getSymptomLog(user);
 
   const wide = useWide();
+  const { scale } = useContext(AccessibilityContext);
   const [view, setView] = useState("Concentration");
   const [selected, setSelected] = useState(readings[readings.length - 1]);
 
@@ -32,8 +34,18 @@ export default function History() {
       className="flex-1 bg-gray-50"
       contentContainerStyle={page()}
     >
-      <Text className="text-4xl font-bold text-gray-900">History</Text>
-      <Text className="text-4xl font-black text-gray-900 mb-5">Overview</Text>
+      <Text
+        className="font-bold text-gray-900"
+        style={{ fontSize: 34 * scale, lineHeight: 40 * scale }}
+      >
+        History
+      </Text>
+      <Text
+        className="font-black text-gray-900 mb-5"
+        style={{ fontSize: 34 * scale, lineHeight: 40 * scale }}
+      >
+        Overview
+      </Text>
 
       {/* Switches both the graph and the list below it */}
       <View className="flex-row bg-white rounded-xl border border-gray-200 p-1 mb-4">
@@ -176,13 +188,23 @@ function SymptomStats({ entries }) {
   );
 }
 
+// Reads the text-size setting itself rather than having it threaded through
+// LevelStats and SymptomStats, which do not otherwise care about it.
 function Stat({ value, label, divider }) {
+  const { scale } = useContext(AccessibilityContext);
   return (
     <View
       className={`flex-1 items-center py-4 ${divider ? "border-l border-gray-200" : ""}`}
     >
-      <Text className="text-2xl font-bold text-gray-900">{value}</Text>
-      <Text className="text-sm text-gray-500 mt-0.5">{label}</Text>
+      <Text
+        className="font-bold text-gray-900"
+        style={{ fontSize: 22 * scale }}
+      >
+        {value}
+      </Text>
+      <Text className="text-gray-500 mt-0.5" style={{ fontSize: 14 * scale }}>
+        {label}
+      </Text>
     </View>
   );
 }
