@@ -1,16 +1,20 @@
-import { useContext, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import LevelLineChart, {
   ChartFooter,
   ChartLegend,
 } from "../components/LevelLineChart";
-import SymptomChart from "../components/SymptomChart";
+import SymptomHistoryChart from "../components/SymptomHistoryChart";
+import SymptomTable from "../components/SymptomTable";
+import { chronological, loadEntries } from "../data/symptomLog";
+import { doseProximity, loadMeals, proteinLabel } from "../data/mealLog";
+import { SYMPTOMS, sleepLabel } from "../data/symptoms";
+import { Ionicons } from "@expo/vector-icons";
 import { page, useWide } from "../components/layout";
 import {
   RANGE_HIGH,
   RANGE_LOW,
   getHistory,
-  getSymptomLog,
   levelTone,
 } from "../data/history";
 import { RoleContext } from "../context/RoleContext";
@@ -19,7 +23,15 @@ import { AccessibilityContext } from "../context/AccessibilityContext";
 export default function History() {
   const { user } = useContext(RoleContext);
   const readings = getHistory(user);
-  const symptoms = getSymptomLog(user);
+
+  // The patient's own saved check-ins and meals, rather than anything derived.
+  const [checkIns, setCheckIns] = useState([]);
+  const [meals, setMeals] = useState([]);
+
+  useEffect(() => {
+    loadEntries(user).then((list) => setCheckIns(chronological(list)));
+    loadMeals(user).then(setMeals);
+  }, [user]);
 
   const wide = useWide();
   const { scale } = useContext(AccessibilityContext);
@@ -107,7 +119,7 @@ export default function History() {
             <Text className="text-xl font-bold text-gray-900 mb-3">
               Symptoms over time
             </Text>
-            <SymptomChart entries={symptoms} />
+            <SymptomHistoryChart entries={checkIns} scale={scale} />
           </>
         )}
       </View>
@@ -116,7 +128,7 @@ export default function History() {
       {showLevels ? (
         <LevelStats readings={readings} />
       ) : (
-        <SymptomStats entries={symptoms} />
+        <SymptomStats entries={checkIns} />
       )}
 
       {/* The matching list */}
@@ -148,10 +160,60 @@ export default function History() {
                 </View>
               </View>
             ))
-        : symptoms
-            .slice()
-            .reverse()
-            .map((entry) => <SymptomRow key={entry.id} entry={entry} />)}
+        : (
+            <View className="bg-white rounded-2xl border border-gray-200 p-4">
+              <SymptomTable
+                entries={[...checkIns].reverse()}
+                scale={scale}
+              />
+            </View>
+          )}
+
+      {/* Meals, because protein competes with levodopa for absorption */}
+      {meals.length ? (
+        <View style={{ marginTop: 22 }}>
+          <Text
+            className="font-bold text-gray-900 mb-2"
+            style={{ fontSize: 20 * scale }}
+          >
+            Meals
+          </Text>
+          {meals.slice(0, 8).map((meal) => {
+            const near = doseProximity(meal);
+            return (
+              <View
+                key={meal.id}
+                className="bg-white rounded-2xl border border-gray-200 px-4 py-3 mb-2"
+              >
+                <View className="flex-row items-center">
+                  <Ionicons
+                    name={near?.flag ? "alert-circle" : "restaurant-outline"}
+                    size={20}
+                    color={near?.flag ? "#9a3412" : "#64748b"}
+                  />
+                  <Text
+                    className="text-gray-900 ml-2 flex-1"
+                    style={{ fontSize: 17 * scale }}
+                  >
+                    {meal.timeLabel} · {proteinLabel(meal.protein)}
+                  </Text>
+                </View>
+                {near?.flag ? (
+                  <Text
+                    style={{
+                      fontSize: 15 * scale,
+                      color: "#9a3412",
+                      marginTop: 4,
+                    }}
+                  >
+                    About {near.minutes} minutes from the {near.doseLabel} dose
+                  </Text>
+                ) : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -175,15 +237,25 @@ function LevelStats({ readings }) {
 }
 
 function SymptomStats({ entries }) {
-  const mean = (key) =>
-    (entries.reduce((sum, e) => sum + e[key], 0) / entries.length).toFixed(1);
-  const worst = Math.max(...entries.map((e) => Math.max(e.stiffness, e.tremor)));
+  if (!entries.length) {
+    return (
+      <View className="flex-row bg-white rounded-2xl border border-gray-200 mb-5">
+        <Stat value="0" label="Check-ins" />
+      </View>
+    );
+  }
+
+  // The worst score across every symptom, not just the motor ones.
+  const worst = Math.max(
+    ...entries.map((e) => Math.max(...Object.values(e.scores || { x: 0 })))
+  );
+  const byCaregiver = entries.filter((e) => e.by === "caregiver").length;
 
   return (
     <View className="flex-row bg-white rounded-2xl border border-gray-200 mb-5">
-      <Stat value={mean("stiffness")} label="Avg stiffness" />
-      <Stat value={mean("tremor")} label="Avg tremor" divider />
-      <Stat value={`${worst}/4`} label="Worst" divider />
+      <Stat value={entries.length} label="Check-ins" />
+      <Stat value={`${worst}/4`} label="Worst score" divider />
+      <Stat value={byCaregiver} label="By caregiver" divider />
     </View>
   );
 }
@@ -235,19 +307,3 @@ function ReadingRow({ reading, wide }) {
   );
 }
 
-function SymptomRow({ entry }) {
-  return (
-    <View className="bg-white rounded-2xl border border-gray-200 px-4 py-3 mb-2">
-      <View className="flex-row items-center justify-between">
-        <Text className="text-base font-semibold text-gray-900">{entry.day}</Text>
-        <Text className="text-sm text-gray-500">{entry.time}</Text>
-      </View>
-      <Text className="text-base text-gray-700 mt-1">
-        Stiffness {entry.stiffness}/4 • Tremor {entry.tremor}/4
-      </Text>
-      <Text className="text-sm text-gray-500 mt-1">
-        Level was {entry.level} ng/mL
-      </Text>
-    </View>
-  );
-}

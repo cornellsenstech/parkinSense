@@ -10,17 +10,15 @@ import {
   SYMPTOMS,
   emptyScores,
 } from "../data/symptoms";
-import { useWide } from "./layout";
 
 const UNDO_SECONDS = 20;
 
 // The full check-in: seven scored symptoms, sleep quality, and a free-text box
-// for anything the fixed list does not cover. Rows are laid out two-up on a wide
-// screen so the card stays roughly square instead of a very tall single column.
+// for anything the fixed list does not cover. One symptom per row, stacked, so
+// the card reads straight down.
 export default function SymptomForm({ patientId }) {
   const { scale } = useContext(AccessibilityContext);
   const { reporter } = useContext(RoleContext);
-  const wide = useWide();
 
   const [scores, setScores] = useState(emptyScores);
   const [sleep, setSleep] = useState(null);
@@ -68,20 +66,11 @@ export default function SymptomForm({ patientId }) {
         Tap a number for each. 0 is none, 4 is severe.
       </Text>
 
-      {/* Two-up on a wide screen so the card is not one long column */}
-      <View
-        style={{
-          flexDirection: wide ? "row" : "column",
-          flexWrap: wide ? "wrap" : "nowrap",
-          justifyContent: "space-between",
-          marginTop: 16,
-        }}
-      >
+      {/* Stacked, one symptom per row. Side by side saved space but made the
+          card harder to read down. */}
+      <View style={{ marginTop: 16 }}>
         {SYMPTOMS.map((symptom) => (
-          <View
-            key={symptom.id}
-            style={{ width: wide ? "48.5%" : "100%", marginBottom: 14 }}
-          >
+          <View key={symptom.id} style={{ marginBottom: 14 }}>
             <View
               style={{
                 flexDirection: "row",

@@ -11,6 +11,8 @@ import {
   getSymptomLog,
 } from "../../data/history";
 import { loadNote, saveNote } from "../../data/notes";
+import { loadMeals } from "../../data/mealLog";
+import { chronological, loadEntries } from "../../data/symptomLog";
 
 // Read-only clinician view of one patient. Same chart components as the
 // patient side, so the two portals can never disagree about the data — but
@@ -20,6 +22,23 @@ export default function PatientDetail({ patient, onBack }) {
   const symptoms = getSymptomLog(patient.id);
   const [note, setNote] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
+  const [meals, setMeals] = useState([]);
+  const [checkIns, setCheckIns] = useState([]);
+
+  useEffect(() => {
+    let active = true;
+    loadMeals(patient.id).then((list) => {
+      if (active) setMeals(list);
+    });
+    // The patient's and caregiver's own check-ins, which carry all seven
+    // symptoms rather than the two the demo curve implies.
+    loadEntries(patient.id).then((list) => {
+      if (active) setCheckIns(chronological(list));
+    });
+    return () => {
+      active = false;
+    };
+  }, [patient.id]);
 
   // Reload whenever the doctor opens a different patient. The `active` flag
   // drops a slow read if they switch again before it resolves, so one
@@ -139,10 +158,15 @@ export default function PatientDetail({ patient, onBack }) {
         </View>
       </Section>
 
-      {/* Levels and symptoms together — the correlation is the point, and it
-          cannot be read from two separate charts. */}
-      <Section title="Levels and symptoms together">
-        <CombinedChart readings={readings} symptoms={symptoms} />
+      {/* Levels, every reported symptom, and protein on one time axis. The
+          correlation is the point and cannot be read from separate charts. */}
+      <Section title="Levels, symptoms and meals together">
+        <CombinedChart
+          readings={readings}
+          symptoms={symptoms}
+          checkIns={checkIns}
+          meals={meals}
+        />
         <Text className="text-xs text-gray-500 mt-2">
           Dashed lines are symptom scores on the right axis. Solid line is
           concentration on the left.

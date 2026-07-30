@@ -16,7 +16,25 @@ export function defaultProfile(patientId) {
     height: patient.height,
     email: patient.email,
     photo: null,
+    // The caregiver's own details. Kept alongside the patient's rather than in a
+    // separate record, because in practice they share one device and one login.
+    caregiverName: "",
+    caregiverRelation: "",
+    caregiverPhone: "",
   };
+}
+
+// First name of whoever is using the app, so the greeting can address them.
+// Falls back to the patient when no caregiver has been named yet.
+export function displayFirstName(profile, reporter) {
+  const source =
+    reporter === "caregiver" && profile.caregiverName
+      ? profile.caregiverName
+      : profile.name;
+  const parts = String(source || "").trim().split(" ");
+  const titles = ["mr", "mrs", "ms", "miss", "dr", "prof"];
+  const first = parts[0] ? parts[0].replace(".", "").toLowerCase() : "";
+  return titles.includes(first) && parts.length > 1 ? parts[1] : parts[0] || "";
 }
 
 export async function loadProfile(patientId) {

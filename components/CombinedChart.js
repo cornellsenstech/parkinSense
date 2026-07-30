@@ -1,6 +1,7 @@
 import { ScrollView, Text, View } from "react-native";
 import Svg, { Circle, Line, Polyline, Rect } from "react-native-svg";
 import { CHART_MAX, RANGE_HIGH, RANGE_LOW } from "../data/history";
+import { SYMPTOMS } from "../data/symptoms";
 
 // Levels and reported symptoms on one time axis.
 //
@@ -34,7 +35,23 @@ function ySymptom(value) {
   return PAD_TOP + (1 - value / SYMPTOM_MAX) * plotHeight();
 }
 
-export default function CombinedChart({ readings, symptoms }) {
+// Protein load, drawn as a bar rising from the baseline at the hour the meal was
+// eaten. Kept visually distinct from the two line series so three kinds of data
+// on one time axis stay separable.
+const PROTEIN_HEIGHT = { low: 8, some: 20, high: 34, unsure: 12 };
+const PROTEIN_COLOUR = {
+  low: "#cbd5e1",
+  some: "#fbbf24",
+  high: "#dc2626",
+  unsure: "#94a3b8",
+};
+
+export default function CombinedChart({
+  readings,
+  symptoms,
+  meals = [],
+  checkIns = [],
+}) {
   const width = readings.length * STEP;
 
   const levelLine = readings
@@ -52,9 +69,50 @@ export default function CombinedChart({ readings, symptoms }) {
   const symptomLine = (key) =>
     points.map((s) => `${s.i * STEP + STEP / 2},${ySymptom(s[key])}`).join(" ");
 
+  // Real check-ins, placed at the reading nearest the hour they were saved, so
+  // every reported symptom can be drawn on the same axis as the levels.
+  const reported = checkIns
+    .map((entry) => {
+      let best = -1;
+      let bestGap = Infinity;
+      readings.forEach((r, i) => {
+        const gap = Math.abs((r.hour ?? 0) - (entry.hour ?? 0));
+        if (gap < bestGap) {
+          bestGap = gap;
+          best = i;
+        }
+      });
+      return best >= 0 && bestGap <= 1 ? { entry, i: best } : null;
+    })
+    .filter(Boolean);
+
+  const reportedLine = (symptomId) =>
+    reported
+      .map(({ entry, i }) =>
+        `${i * STEP + STEP / 2},${ySymptom(entry.scores?.[symptomId] ?? 0)}`
+      )
+      .join(" ");
+
   const dayStarts = readings
     .map((r, i) => ({ ...r, i }))
     .filter((r, i) => i > 0 && readings[i - 1].day !== r.day);
+
+  // Place each meal at the reading nearest its hour. Meals are logged against a
+  // clock time, not a reading, so they need mapping onto the same axis.
+  const mealBars = meals
+    .map((meal) => {
+      let best = -1;
+      let bestGap = Infinity;
+      readings.forEach((r, i) => {
+        const gap = Math.abs((r.hour ?? 0) - (meal.hour ?? 0));
+        if (gap < bestGap) {
+          bestGap = gap;
+          best = i;
+        }
+      });
+      return best >= 0 && bestGap <= 1 ? { meal, i: best } : null;
+    })
+    .filter(Boolean);
 
   return (
     <View>
@@ -63,6 +121,13 @@ export default function CombinedChart({ readings, symptoms }) {
         <Key color={STIFFNESS} label="Stiffness (0–4)" />
         <Key color={TREMOR} label="Tremor (0–4)" />
         <Key color="#dcfce7" label="Target window" block />
+        <Key color="#dc2626" label="High-protein meal" block />
+        <Key color="#fbbf24" label="Some protein" block />
+        {SYMPTOMS.filter((s) => s.id !== "stiffness" && s.id !== "tremor").map(
+          (s) => (
+            <Key key={s.id} color={s.colour} label={s.label} />
+          )
+        )}
       </View>
 
       <View style={{ flexDirection: "row" }}>
@@ -120,6 +185,23 @@ export default function CombinedChart({ readings, symptoms }) {
                 />
               ))}
 
+              {/* Protein bars sit behind the lines, on the baseline */}
+              {mealBars.map(({ meal, i }) => {
+                const h = PROTEIN_HEIGHT[meal.protein] ?? 12;
+                return (
+                  <Rect
+                    key={meal.id}
+                    x={i * STEP + STEP / 2 - 5}
+                    y={HEIGHT - PAD_BOTTOM - h}
+                    width="10"
+                    height={h}
+                    rx="2"
+                    fill={PROTEIN_COLOUR[meal.protein] || "#94a3b8"}
+                    opacity="0.85"
+                  />
+                );
+              })}
+
               <Polyline
                 points={levelLine}
                 fill="none"
@@ -162,6 +244,24 @@ export default function CombinedChart({ readings, symptoms }) {
                   fill={TREMOR}
                 />
               ))}
+
+              {/* Everything the patient or caregiver actually reported, beyond
+                  the two motor symptoms the demo curve implies. */}
+              {reported.length
+                ? SYMPTOMS.filter(
+                    (s) => s.id !== "stiffness" && s.id !== "tremor"
+                  ).map((symptom) => (
+                    <Polyline
+                      key={symptom.id}
+                      points={reportedLine(symptom.id)}
+                      fill="none"
+                      stroke={symptom.colour}
+                      strokeWidth="1.6"
+                      strokeDasharray="2 3"
+                      opacity="0.9"
+                    />
+                  ))
+                : null}
             </Svg>
 
             {/* Hour labels, thinned out so they do not collide */}

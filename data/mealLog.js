@@ -16,19 +16,23 @@ export const PROTEIN_LEVELS = [
     id: "low",
     label: "Little or none",
     example: "Fruit, toast, vegetables, rice",
-    weight: 0,
   },
   {
     id: "some",
     label: "Some protein",
     example: "Yoghurt, eggs, beans, a little cheese",
-    weight: 1,
   },
   {
     id: "high",
-    label: "High protein",
+    label: "A lot of protein",
     example: "Meat, fish, protein shake, large dairy portion",
-    weight: 2,
+  },
+  {
+    // Nobody should be blocked from logging a meal because they are unsure how
+    // much protein was in it. It can be filled in from History afterwards.
+    id: "unsure",
+    label: "Not sure",
+    example: "Log it now, add this later",
   },
 ];
 
@@ -53,12 +57,44 @@ export async function loadMeals(patientId) {
   }
 }
 
+// Accepts "8:30 am", "08:30", "8:30" or "20:15" and returns minutes past
+// midnight, or null if it cannot be read. Typed time is optional; the quick
+// offsets remain the easy path.
+export function parseTime(text) {
+  if (!text) return null;
+  const match = String(text)
+    .trim()
+    .toLowerCase()
+    .match(/^(\d{1,2})[:.]?(\d{2})?\s*(am|pm)?$/);
+  if (!match) return null;
+
+  let hour = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  const period = match[3];
+
+  if (minute > 59) return null;
+  if (period === "pm" && hour < 12) hour += 12;
+  if (period === "am" && hour === 12) hour = 0;
+  if (hour > 23) return null;
+
+  return hour * 60 + minute;
+}
+
 // Returns the saved entry so the caller can offer to undo it.
-export async function saveMeal(patientId, { protein, minutesAgo }) {
-  const when = new Date(Date.now() - minutesAgo * 60 * 1000);
+// `atMinuteOfDay` wins over `minutesAgo` when the patient typed a time.
+export async function saveMeal(patientId, { protein, minutesAgo, food, atMinuteOfDay }) {
+  let when;
+  if (typeof atMinuteOfDay === "number") {
+    when = new Date();
+    when.setHours(Math.floor(atMinuteOfDay / 60), atMinuteOfDay % 60, 0, 0);
+  } else {
+    when = new Date(Date.now() - minutesAgo * 60 * 1000);
+  }
+
   const entry = {
     id: `m-${Date.now()}`,
     protein,
+    food: (food || "").trim(),
     eatenAt: when.getTime(),
     hour: when.getHours(),
     minuteOfDay: when.getHours() * 60 + when.getMinutes(),
@@ -83,6 +119,19 @@ export async function removeMeal(patientId, entryId) {
       keyFor(patientId),
       JSON.stringify(current.filter((e) => e.id !== entryId))
     );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Fill in the protein level later, from History, for a meal logged as "not
+// sure" at the time.
+export async function setMealProtein(patientId, entryId, protein) {
+  try {
+    const current = await loadMeals(patientId);
+    const next = current.map((m) => (m.id === entryId ? { ...m, protein } : m));
+    await AsyncStorage.setItem(keyFor(patientId), JSON.stringify(next));
     return true;
   } catch {
     return false;

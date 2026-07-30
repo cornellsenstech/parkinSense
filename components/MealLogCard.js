@@ -1,12 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useContext, useEffect, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { AccessibilityContext } from "../context/AccessibilityContext";
 import {
   PROTEIN_LEVELS,
   WHEN_OPTIONS,
   doseProximity,
   loadMeals,
+  parseTime,
   proteinLabel,
   removeMeal,
   saveMeal,
@@ -23,6 +24,8 @@ export default function MealLogCard({ patientId }) {
 
   const [protein, setProtein] = useState("low");
   const [when, setWhen] = useState("now");
+  const [food, setFood] = useState("");
+  const [timeText, setTimeText] = useState("");
   const [meals, setMeals] = useState([]);
   const [justSaved, setJustSaved] = useState(null);
   const [showInfo, setShowInfo] = useState(false);
@@ -35,12 +38,18 @@ export default function MealLogCard({ patientId }) {
 
   async function handleSave() {
     const option = WHEN_OPTIONS.find((w) => w.id === when);
+    // A typed time wins over the quick offsets when it can be read.
+    const typed = parseTime(timeText);
     const entry = await saveMeal(patientId, {
       protein,
+      food,
       minutesAgo: option ? option.minutesAgo : 0,
+      atMinuteOfDay: typed === null ? undefined : typed,
     });
     if (!entry) return;
 
+    setFood("");
+    setTimeText("");
     setMeals(await loadMeals(patientId));
     setJustSaved(entry);
     clearTimeout(undoTimer.current);
@@ -56,7 +65,6 @@ export default function MealLogCard({ patientId }) {
   }
 
   const savedProximity = doseProximity(justSaved);
-  const today = meals.slice(0, 4);
 
   return (
     <View className="bg-white rounded-3xl border border-gray-200 p-6 mb-5">
@@ -150,13 +158,43 @@ export default function MealLogCard({ patientId }) {
         </View>
       ) : null}
 
-      {/* How much protein */}
+      {/* What, in their own words */}
       <Text
         style={{
           fontSize: 17 * scale,
           fontWeight: "700",
           color: "#0f172a",
           marginTop: 18,
+          marginBottom: 6,
+        }}
+      >
+        What did you eat?
+      </Text>
+      <TextInput
+        value={food}
+        onChangeText={setFood}
+        placeholder="e.g. Chicken sandwich and an apple"
+        placeholderTextColor="#64748b"
+        accessibilityLabel="What did you eat"
+        style={{
+          minHeight: 56,
+          paddingHorizontal: 14,
+          fontSize: 17 * scale,
+          color: "#0f172a",
+          backgroundColor: "#ffffff",
+          borderWidth: 2,
+          borderColor: "#cbd5e1",
+          borderRadius: 14,
+        }}
+      />
+
+      {/* How much protein */}
+      <Text
+        style={{
+          fontSize: 17 * scale,
+          fontWeight: "700",
+          color: "#0f172a",
+          marginTop: 16,
           marginBottom: 8,
         }}
       >
@@ -261,6 +299,31 @@ export default function MealLogCard({ patientId }) {
         })}
       </View>
 
+      {/* Or type an exact time. Optional, because typing is the harder path. */}
+      <TextInput
+        value={timeText}
+        onChangeText={setTimeText}
+        placeholder="Or type a time, e.g. 8:30 AM"
+        placeholderTextColor="#64748b"
+        accessibilityLabel="Or type the time you ate"
+        style={{
+          minHeight: 56,
+          marginBottom: 10,
+          paddingHorizontal: 14,
+          fontSize: 17 * scale,
+          color: "#0f172a",
+          backgroundColor: "#ffffff",
+          borderWidth: 2,
+          borderColor: timeText && parseTime(timeText) === null ? "#fca5a5" : "#cbd5e1",
+          borderRadius: 14,
+        }}
+      />
+      {timeText && parseTime(timeText) === null ? (
+        <Text style={{ fontSize: 15 * scale, color: "#991b1b", marginBottom: 10 }}>
+          Could not read that time. Try something like 8:30 AM.
+        </Text>
+      ) : null}
+
       <Pressable
         onPress={handleSave}
         accessibilityRole="button"
@@ -358,65 +421,8 @@ export default function MealLogCard({ patientId }) {
         </View>
       ) : null}
 
-      {/* Recent meals */}
-      {today.length ? (
-        <View style={{ marginTop: 18 }}>
-          <View
-            style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}
-          >
-            <Text
-              style={{ flex: 1, fontSize: 17 * scale, fontWeight: "700", color: "#0f172a" }}
-            >
-              Recent meals
-            </Text>
-            <SpeakButton
-              text={`Recent meals. ${today
-                .map((m) => `${m.timeLabel}, ${proteinLabel(m.protein)}`)
-                .join(". ")}`}
-              label="Read recent meals aloud"
-            />
-          </View>
+      {/* The list of past meals lives on the History tab, not here. */}
 
-          {today.map((meal) => {
-            const near = doseProximity(meal);
-            return (
-              <View
-                key={meal.id}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  paddingVertical: 10,
-                  borderTopWidth: 1,
-                  borderTopColor: "#e2e8f0",
-                }}
-              >
-                <Ionicons
-                  name={near?.flag ? "alert-circle" : "restaurant-outline"}
-                  size={20}
-                  color={near?.flag ? "#9a3412" : "#64748b"}
-                />
-                <Text
-                  style={{
-                    marginLeft: 10,
-                    flex: 1,
-                    fontSize: 16 * scale,
-                    color: "#0f172a",
-                  }}
-                >
-                  {meal.timeLabel} · {proteinLabel(meal.protein)}
-                </Text>
-                {near?.flag ? (
-                  <Text
-                    style={{ fontSize: 14 * scale, fontWeight: "700", color: "#9a3412" }}
-                  >
-                    near dose
-                  </Text>
-                ) : null}
-              </View>
-            );
-          })}
-        </View>
-      ) : null}
     </View>
   );
 }

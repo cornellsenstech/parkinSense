@@ -154,10 +154,42 @@ export default function Profile() {
           last
         />
 
-        <Text className="text-sm text-gray-500 mt-1 mb-4">
-          Weight and age affect how your medication is absorbed, so your care team
-          uses them alongside your readings.
-        </Text>
+        {/* The caregiver's own details, so the app can address them by name and
+            a clinician knows who has been recording. */}
+        <View
+          style={{
+            marginTop: 4,
+            marginBottom: 18,
+            paddingTop: 18,
+            borderTopWidth: 1,
+            borderTopColor: "#e2e8f0",
+          }}
+        >
+          <Text className="text-xl font-bold text-gray-900 mb-1">Caregiver</Text>
+          <Text className="text-base text-gray-600 mb-4">
+            Leave blank if nobody else helps with the app
+          </Text>
+
+          <Field
+            label="Caregiver name"
+            value={profile.caregiverName}
+            onChange={(v) => update("caregiverName", v)}
+            placeholder="e.g. Anna Ellis"
+          />
+          <Field
+            label="Relationship"
+            value={profile.caregiverRelation}
+            onChange={(v) => update("caregiverRelation", v)}
+            placeholder="e.g. Wife, son, support worker"
+          />
+          <Field
+            label="Caregiver phone"
+            value={profile.caregiverPhone}
+            onChange={(v) => update("caregiverPhone", v)}
+            placeholder="Best number to reach them"
+            last
+          />
+        </View>
 
         <Pressable
           onPress={handleSave}

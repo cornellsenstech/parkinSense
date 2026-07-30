@@ -12,6 +12,7 @@ import TodayTrend from "../components/TodayTrend";
 import { describeTrend, getTodayTrend } from "../data/history";
 import { describeForecast, forecastOff } from "../data/forecast";
 import { patients } from "../data/patients";
+import { defaultProfile, displayFirstName, loadProfile } from "../data/profile";
 import { RoleContext } from "../context/RoleContext";
 import { AccessibilityContext } from "../context/AccessibilityContext";
 
@@ -31,7 +32,7 @@ function greetingFor(hour) {
 }
 
 export default function Home() {
-  const { user } = useContext(RoleContext);
+  const { user, reporter } = useContext(RoleContext);
   const { scale } = useContext(AccessibilityContext);
   const wide = useWide();
   const patient = patients.find((p) => p.id === user) || patients[0];
@@ -41,13 +42,29 @@ export default function Home() {
   // Saving and undo now live in SymptomForm, which owns the whole check-in.
   const [showForecastInfo, setShowForecastInfo] = useState(false);
 
+  // The greeting addresses whoever is holding the phone, so it needs the saved
+  // profile to know the caregiver's name.
+  const [profile, setProfile] = useState(() => defaultProfile(user));
+  useEffect(() => {
+    let active = true;
+    loadProfile(user).then((saved) => {
+      if (active) setProfile(saved);
+    });
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  const greetName = displayFirstName(profile, reporter) || firstName;
+
   const trend = getTodayTrend(patient.id);
   const forecast = describeForecast(forecastOff(patient.id));
 
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={page(undefined, 24)}
+      // Wider than the other screens, because Home carries three columns.
+      contentContainerStyle={page(wide ? 1320 : undefined, 24)}
     >
       {/* Greeting and device on one compact line each, rather than two big
           blocks — the level below is what deserves the space. */}
@@ -60,8 +77,13 @@ export default function Home() {
           color: "#0f172a",
         }}
       >
-        {greeting}, {firstName}
+        {greeting}, {greetName}
       </Text>
+      {reporter === "caregiver" ? (
+        <Text style={{ fontSize: 16 * scale, color: "#475569", marginTop: 2 }}>
+          Recording for {firstName}
+        </Text>
+      ) : null}
       <View style={{ marginTop: 10, marginBottom: 18 }}>
         <SensorStatus
           isConnected={patient.connected}
@@ -73,55 +95,62 @@ export default function Home() {
           attributed to them. */}
       <ReporterToggle />
 
-      {/* Two columns on a wide screen so the page fills the space without any
-          one card growing an over-long line. Stacks on a phone. */}
-      <View style={columns(wide, 24)}>
+      {/* Three columns on a wide screen: the readings on the left, then the two
+          things you record side by side. Keeping the check-in and the meal log
+          in separate columns rather than stacked roughly halves the scroll.
+          Stacks into one column on a phone. */}
+      <View style={columns(wide, 20)}>
       <View style={column(wide)}>
 
-      {/* Current level */}
+      {/* Level and trend in one card: the current number and where it is
+          heading are the same question, and splitting them made the reader
+          look in two places. */}
       <Card
         title="Your level"
         speakText={`Your level is ${patient.level} ng/mL, ${
           patient.inRange ? "in range" : "out of range"
-        }. Updated ${patient.lastUpdated}.`}
+        }. ${describeTrend(trend)}`}
       >
-        <View className="flex-row items-end">
-          <Text className="text-6xl font-bold text-gray-900">{patient.level}</Text>
-          <Text className="text-2xl text-gray-600 ml-2 mb-2">{patient.unit}</Text>
+        <View className="flex-row items-end justify-between">
+          <View className="flex-row items-end">
+            <Text className="text-6xl font-bold text-gray-900">
+              {patient.level}
+            </Text>
+            <Text className="text-2xl text-gray-600 ml-2 mb-2">
+              {patient.unit}
+            </Text>
+          </View>
+          <View className="mb-2">
+            <StatusBadge
+              tone={patient.inRange ? "good" : "warn"}
+              label={patient.inRange ? "In range" : "Out of range"}
+            />
+          </View>
         </View>
-        <View className="mt-4">
-          <StatusBadge
-            tone={patient.inRange ? "good" : "warn"}
-            label={patient.inRange ? "In range" : "Out of range"}
-          />
-        </View>
-        <Text className="text-base text-gray-600 mt-4">
+
+        <Text className="text-base text-gray-600 mt-2">
           Updated {patient.lastUpdated}
         </Text>
+
+        <View
+          style={{
+            marginTop: 16,
+            paddingTop: 16,
+            borderTopWidth: 1,
+            borderTopColor: "#e2e8f0",
+          }}
+        >
+          <Text className="text-base font-semibold text-gray-900">
+            Today so far
+          </Text>
+          <Text className="text-base text-gray-700 mb-3">
+            {describeTrend(trend)}
+          </Text>
+          <TodayTrend points={trend} />
+        </View>
       </Card>
 
-      {/* Trend */}
-      <Card
-        title="Today's trend"
-        subtitle="Midnight to now, in 24 steps"
-        speakText={`Today's trend. ${describeTrend(trend)}`}
-      >
-        <Text className="text-base text-gray-700 mb-4">{describeTrend(trend)}</Text>
-        <TodayTrend points={trend} />
-      </Card>
-
-      {/* Meals affect absorption, so they sit alongside the level and trend */}
-      <MealLogCard patientId={patient.id} />
-
-      </View>
-      <View style={column(wide)}>
-
-      {/* Symptom check-in, including sleep and a free-text note */}
-      <SymptomForm patientId={patient.id} />
-
-
-      {/* Forecast sits under the symptom check-in: what you have just reported
-          and what is likely to happen next belong together. */}
+      {/* Forecast follows the level it is derived from */}
       {forecast ? (
         <ForecastCard
           forecast={forecast}
@@ -130,6 +159,18 @@ export default function Home() {
           onToggleInfo={() => setShowForecastInfo(!showForecastInfo)}
         />
       ) : null}
+
+      </View>
+      <View style={column(wide)}>
+
+      {/* Symptom check-in, including sleep and a free-text note */}
+      <SymptomForm patientId={patient.id} />
+
+      </View>
+      <View style={column(wide)}>
+
+      {/* Meals beside the check-in rather than below it */}
+      <MealLogCard patientId={patient.id} />
 
       </View>
       </View>
