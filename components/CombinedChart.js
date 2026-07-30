@@ -67,18 +67,18 @@ export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
   const width = readings.length * STEP;
   const xAt = (i) => i * STEP + STEP / 2;
 
-  // Anything logged against a clock time has to be mapped onto the reading axis.
-  const nearestIndex = (hour) => {
-    let best = -1;
-    let gap = Infinity;
-    readings.forEach((r, i) => {
-      const d = Math.abs((r.hour ?? 0) - (hour ?? 0));
-      if (d < gap) {
-        gap = d;
-        best = i;
-      }
-    });
-    return gap <= 1 ? best : -1;
+  // Map a real timestamp onto the reading axis.
+  //
+  // Matching on hour alone was wrong: the axis spans two days, so hour 8 exists
+  // twice and the lookup always found day one. Every day-two entry was drawn
+  // back on day one's column and the line doubled back on itself. Positioning by
+  // how long ago it happened keeps the series monotonic.
+  const lastIndex = readings.length - 1;
+  const indexForTime = (timestamp) => {
+    if (!timestamp) return -1;
+    const hoursAgo = (Date.now() - timestamp) / 3600000;
+    const i = Math.round(lastIndex - hoursAgo);
+    return i >= 0 && i <= lastIndex ? i : -1;
   };
 
   // The reading axis covers the recent window only, but the logs go back much
@@ -89,12 +89,13 @@ export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
 
   const placedCheckIns = checkIns
     .filter((entry) => entry.savedAt >= cutoff)
-    .map((entry) => ({ entry, i: nearestIndex(entry.hour) }))
-    .filter((p) => p.i >= 0);
+    .map((entry) => ({ entry, i: indexForTime(entry.savedAt) }))
+    .filter((p) => p.i >= 0)
+    .sort((a, b) => a.i - b.i); // left to right, so the line cannot backtrack
 
   const placedMeals = meals
     .filter((meal) => meal.eatenAt >= cutoff)
-    .map((meal) => ({ meal, i: nearestIndex(meal.hour) }))
+    .map((meal) => ({ meal, i: indexForTime(meal.eatenAt) }))
     .filter((p) => p.i >= 0);
 
   const levelLine = readings.map((r, i) => `${xAt(i)},${yLevel(r.level)}`).join(" ");

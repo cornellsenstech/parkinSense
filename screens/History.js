@@ -50,6 +50,7 @@ export default function History() {
   const [selected, setSelected] = useState(readings[readings.length - 1]);
 
   const showLevels = view === "Concentration";
+  const showMeals = view === "Meals";
   const days = [...new Set(readings.map((r) => r.day))];
 
   return (
@@ -72,7 +73,7 @@ export default function History() {
 
       {/* Switches both the graph and the list below it */}
       <View className="flex-row bg-white rounded-xl border border-gray-200 p-1 mb-4">
-        {["Concentration", "Symptoms"].map((option) => {
+        {["Concentration", "Symptoms", "Meals"].map((option) => {
           const active = option === view;
           return (
             <Pressable
@@ -99,7 +100,9 @@ export default function History() {
 
       {/* One graph at a time, matching the selection above */}
       <View className="bg-white rounded-3xl border border-gray-200 p-5 mb-5">
-        {showLevels ? (
+        {showMeals ? (
+          <MealStats meals={meals} scale={scale} />
+        ) : showLevels ? (
           <>
             <ChartLegend />
             {selected ? (
@@ -136,14 +139,14 @@ export default function History() {
       </View>
 
       {/* Summary numbers for whichever view is showing */}
-      {showLevels ? (
+      {showMeals ? null : showLevels ? (
         <LevelStats readings={readings} />
       ) : (
         <SymptomStats entries={checkIns} />
       )}
 
       {/* The matching list */}
-      {showLevels
+      {showMeals ? null : showLevels
         ? days
             .slice()
             .reverse()
@@ -181,7 +184,7 @@ export default function History() {
           )}
 
       {/* Meals, because protein competes with levodopa for absorption */}
-      {meals.length ? (
+      {showMeals && meals.length ? (
         <View style={{ marginTop: 22 }}>
           <Text
             className="font-bold text-gray-900 mb-2"
@@ -189,7 +192,7 @@ export default function History() {
           >
             Meals
           </Text>
-          {meals.slice(0, 8).map((meal) => {
+          {meals.map((meal) => {
             const near = doseProximity(meal);
             return (
               <View
@@ -298,6 +301,64 @@ function LevelStats({ readings }) {
       <Stat value={average} label="Avg ng/mL" />
       <Stat value={`${percent}%`} label="Time in range" divider />
       <Stat value={readings.length} label="Readings" divider />
+    </View>
+  );
+}
+
+// Summary for the Meals tab. The figure that matters clinically is how often a
+// high-protein meal landed close to a dose, since that is when absorption is
+// actually affected.
+function MealStats({ meals, scale }) {
+  if (!meals.length) {
+    return (
+      <Text style={{ fontSize: 16 * scale, color: "#64748b" }}>
+        No meals logged yet. Anything you record on the Home tab appears here.
+      </Text>
+    );
+  }
+
+  const highProtein = meals.filter((m) => m.protein === "high").length;
+  const clashes = meals.filter((m) => doseProximity(m)?.flag).length;
+  const unsure = meals.filter((m) => m.protein === "unsure").length;
+
+  return (
+    <View>
+      <Text
+        className="font-bold text-gray-900 mb-3"
+        style={{ fontSize: 20 * scale }}
+      >
+        Meals and your medication
+      </Text>
+
+      <View className="flex-row">
+        <Stat value={meals.length} label="Meals logged" />
+        <Stat value={highProtein} label="High protein" divider />
+        <Stat value={clashes} label="Close to a dose" divider />
+      </View>
+
+      <Text
+        style={{
+          fontSize: 16 * scale,
+          lineHeight: 23 * scale,
+          color: "#475569",
+          marginTop: 12,
+        }}
+      >
+        {clashes > 0
+          ? `${clashes} high-protein ${
+              clashes === 1 ? "meal" : "meals"
+            } fell within an hour of a dose. Protein competes with your medication for absorption, so those doses may have worked less well.`
+          : "No high-protein meals fell close to a dose, so absorption is unlikely to have been affected."}
+      </Text>
+
+      {unsure > 0 ? (
+        <Text
+          style={{ fontSize: 15 * scale, color: "#9a3412", marginTop: 8 }}
+        >
+          {unsure} {unsure === 1 ? "meal is" : "meals are"} still marked “not
+          sure”. You can fill those in below.
+        </Text>
+      ) : null}
     </View>
   );
 }
