@@ -6,11 +6,11 @@ import MealLogCard from "../components/MealLogCard";
 import { column, columns, page, useWide } from "../components/layout";
 import SensorStatus from "../components/SensorStatusCard";
 import StatusBadge from "../components/StatusBadge";
-import SymptomStepper from "../components/SymptomStepper";
+import SymptomForm from "../components/SymptomForm";
+import ReporterToggle from "../components/ReporterToggle";
 import TodayTrend from "../components/TodayTrend";
 import { describeTrend, getTodayTrend } from "../data/history";
 import { describeForecast, forecastOff } from "../data/forecast";
-import { removeEntry, saveEntry } from "../data/symptomLog";
 import { patients } from "../data/patients";
 import { RoleContext } from "../context/RoleContext";
 import { AccessibilityContext } from "../context/AccessibilityContext";
@@ -38,45 +38,8 @@ export default function Home() {
   const firstName = firstNameOf(patient.name);
   const greeting = greetingFor(new Date().getHours());
 
-  const [stiffness, setStiffness] = useState(patient.stiffness);
-  const [tremor, setTremor] = useState(patient.tremor);
-
-  // What was just saved, so it can be undone. Holds the previous values too,
-  // because undoing should put the controls back where they were.
-  const [justSaved, setJustSaved] = useState(null);
-  const [saveError, setSaveError] = useState("");
+  // Saving and undo now live in SymptomForm, which owns the whole check-in.
   const [showForecastInfo, setShowForecastInfo] = useState(false);
-  const undoTimer = useRef(null);
-
-  // A generous window — a tremor or a moment of hesitation should not cost you
-  // the chance to correct a mis-tap.
-  const UNDO_SECONDS = 20;
-
-  useEffect(() => {
-    return () => clearTimeout(undoTimer.current);
-  }, []);
-
-  async function handleSave() {
-    const entry = await saveEntry(patient.id, { stiffness, tremor });
-    if (!entry) {
-      setSaveError("Could not save — please try again");
-      return;
-    }
-    setSaveError("");
-    setJustSaved({ entry, previous: { stiffness, tremor } });
-
-    clearTimeout(undoTimer.current);
-    undoTimer.current = setTimeout(() => setJustSaved(null), UNDO_SECONDS * 1000);
-  }
-
-  async function handleUndo() {
-    if (!justSaved) return;
-    clearTimeout(undoTimer.current);
-    await removeEntry(patient.id, justSaved.entry.id);
-    setStiffness(justSaved.previous.stiffness);
-    setTremor(justSaved.previous.tremor);
-    setJustSaved(null);
-  }
 
   const trend = getTodayTrend(patient.id);
   const forecast = describeForecast(forecastOff(patient.id));
@@ -99,12 +62,16 @@ export default function Home() {
       >
         {greeting}, {firstName}
       </Text>
-      <View style={{ marginTop: 10, marginBottom: 22 }}>
+      <View style={{ marginTop: 10, marginBottom: 18 }}>
         <SensorStatus
           isConnected={patient.connected}
           batteryPct={patient.batteryPct}
         />
       </View>
+
+      {/* Who is holding the phone. Set once, then everything recorded is
+          attributed to them. */}
+      <ReporterToggle />
 
       {/* Two columns on a wide screen so the page fills the space without any
           one card growing an over-long line. Stacks on a phone. */}
@@ -149,94 +116,9 @@ export default function Home() {
       </View>
       <View style={column(wide)}>
 
-      {/* Symptom check-in */}
-      <Card
-        title="How are you feeling?"
-        subtitle="Tap the level that fits — 0 is none, 4 is severe"
-      >
-        <SymptomStepper label="Stiffness" value={stiffness} onChange={setStiffness} />
-        <SymptomStepper label="Tremor" value={tremor} onChange={setTremor} />
+      {/* Symptom check-in, including sleep and a free-text note */}
+      <SymptomForm patientId={patient.id} />
 
-        <Pressable
-          onPress={handleSave}
-          accessibilityRole="button"
-          accessibilityLabel="Save today's symptoms"
-          className="bg-black rounded-2xl items-center justify-center mt-2"
-          style={{ minHeight: 56 }}
-        >
-          <Text className="text-white text-lg font-semibold">Save</Text>
-        </Pressable>
-
-        {/* Say plainly that it saved, and leave a way back. Without this the
-            button appeared to do nothing at all. */}
-        {justSaved ? (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              backgroundColor: "#dcfce7",
-              borderRadius: 16,
-              padding: 14,
-              marginTop: 12,
-            }}
-          >
-            <Ionicons name="checkmark-circle" size={26} color="#166534" />
-            <View style={{ marginLeft: 10, flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 18 * scale,
-                  fontWeight: "700",
-                  color: "#166534",
-                }}
-              >
-                Saved at {justSaved.entry.timeLabel}
-              </Text>
-              <Text style={{ fontSize: 15 * scale, color: "#166534" }}>
-                Stiffness {justSaved.entry.stiffness}, tremor{" "}
-                {justSaved.entry.tremor}
-              </Text>
-            </View>
-            <Pressable
-              onPress={handleUndo}
-              accessibilityRole="button"
-              accessibilityLabel="Undo this save"
-              style={{
-                minHeight: 52,
-                paddingHorizontal: 18,
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: 12,
-                backgroundColor: "#ffffff",
-                borderWidth: 2,
-                borderColor: "#86efac",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 17 * scale,
-                  fontWeight: "700",
-                  color: "#166534",
-                }}
-              >
-                Undo
-              </Text>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {saveError ? (
-          <Text
-            style={{
-              marginTop: 12,
-              fontSize: 17 * scale,
-              fontWeight: "600",
-              color: "#991b1b",
-            }}
-          >
-            {saveError}
-          </Text>
-        ) : null}
-      </Card>
 
       {/* Forecast sits under the symptom check-in: what you have just reported
           and what is likely to happen next belong together. */}

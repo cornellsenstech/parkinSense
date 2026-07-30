@@ -103,6 +103,7 @@ function DoctorPortal() {
 export default function App() {
   const [role, setRole] = useState(getInitialRole());
   const [user, setUser] = useState(null);
+  const [reporter, setReporter] = useState("patient");
 
   // Leaving a portal clears the signed-in patient.
   useEffect(() => {
@@ -121,7 +122,9 @@ export default function App() {
 
   return (
     <AccessibilityProvider>
-      <RoleContext.Provider value={{ role, setRole, user, setUser }}>
+      <RoleContext.Provider
+        value={{ role, setRole, user, setUser, reporter, setReporter }}
+      >
         {renderBody()}
       </RoleContext.Provider>
     </AccessibilityProvider>
