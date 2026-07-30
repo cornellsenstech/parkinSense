@@ -16,6 +16,7 @@ import { RoleContext } from "./context/RoleContext";
 import { AccessibilityProvider } from "./context/AccessibilityContext";
 import { getConversations, needsDoctor } from "./data/messages";
 import { seedIfEmpty } from "./data/seed";
+import { patients } from "./data/patients";
 
 // On web, allow ?role=patient or ?role=doctor to pre-select a portal so
 // each can be opened in its own browser tab.
@@ -107,13 +108,15 @@ export default function App() {
   const [reporter, setReporter] = useState("patient");
   const [seeded, setSeeded] = useState(false);
 
-  // Give a newly signed-in patient two days of demo history so the charts are
-  // not empty. Only ever fills an empty store; real entries are never touched.
+  // Seed two days of demo history for every patient, not just whoever signs in.
+  // The doctor portal reads all four records, so seeding only the logged-in
+  // patient left the clinician looking at empty symptom and meal charts.
   useEffect(() => {
-    if (!user) return;
     setSeeded(false);
-    seedIfEmpty(user).finally(() => setSeeded(true));
-  }, [user]);
+    Promise.all(patients.map((p) => seedIfEmpty(p.id))).finally(() =>
+      setSeeded(true)
+    );
+  }, []);
 
   // Leaving a portal clears the signed-in patient.
   useEffect(() => {
@@ -123,9 +126,9 @@ export default function App() {
   function renderBody() {
     if (role == null) return <RoleSelect />;
     if (role === "patient" && user == null) return <PatientLogin />;
-    // Wait for seeding, or the screens would mount against an empty store and
-    // show no history until they happened to reload.
-    if (role === "patient" && !seeded) return null;
+    // Wait for seeding, or screens would mount against an empty store and show
+    // no history until they happened to reload.
+    if (!seeded) return null;
     return (
       <NavigationContainer key={role}>
         {role === "doctor" ? <DoctorPortal /> : <PatientPortal />}

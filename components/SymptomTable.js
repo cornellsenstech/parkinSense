@@ -37,34 +37,39 @@ export default function SymptomTable({ entries, scale = 1 }) {
 
   return (
     <View>
-      {/* Legend for the marker column and the abbreviations */}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", marginBottom: 10 }}>
+      {/* One line explaining the marker column, rather than a legend block */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginBottom: 12,
+        }}
+      >
+        <Text style={{ fontSize: 13 * scale, color: "#64748b", marginRight: 4 }}>
+          Recorded by
+        </Text>
         {Object.entries(REPORTER_STYLE).map(([id, style]) => (
           <View
             key={id}
-            style={{ flexDirection: "row", alignItems: "center", marginRight: 16 }}
+            style={{ flexDirection: "row", alignItems: "center", marginLeft: 10 }}
           >
-            <View
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 5,
-                backgroundColor: style.colour,
-              }}
-            />
-            <Ionicons
-              name={style.icon}
-              size={14}
-              color={style.colour}
-              style={{ marginLeft: 5 }}
-            />
+            <Ionicons name={style.icon} size={14} color={style.colour} />
             <Text
-              style={{ marginLeft: 5, fontSize: 14 * scale, color: "#475569" }}
+              style={{
+                marginLeft: 4,
+                fontSize: 13 * scale,
+                fontWeight: "600",
+                color: style.colour,
+              }}
             >
               {style.label}
             </Text>
           </View>
         ))}
+        <Text style={{ fontSize: 13 * scale, color: "#94a3b8", marginLeft: 12 }}>
+          0 = none, 4 = severe
+        </Text>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator>

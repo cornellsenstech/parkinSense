@@ -15,17 +15,75 @@ const markerKey = (id) => `parkinsense:seeded:${id}`;
 // symptom lines and the concentration chart tell a consistent story.
 const FACTOR = { robert: 1, margaret: 1.6, frank: 1.15, helen: 1.4 };
 
-// hoursAgo, who recorded it, and a severity multiplier for that moment.
-const CHECK_INS = [
-  { hoursAgo: 34, by: "patient", level: 1, sleep: "ok", note: "" },
-  { hoursAgo: 30, by: "caregiver", level: 2, sleep: null, note: "Slower than usual getting dressed." },
-  { hoursAgo: 26, by: "patient", level: 1, sleep: null, note: "" },
-  { hoursAgo: 22, by: "patient", level: 0, sleep: "good", note: "Good afternoon, felt steady." },
-  { hoursAgo: 12, by: "patient", level: 2, sleep: "bad", note: "Woke up several times." },
-  { hoursAgo: 9, by: "caregiver", level: 3, sleep: null, note: "Very stiff before the morning dose." },
-  { hoursAgo: 6, by: "patient", level: 1, sleep: null, note: "" },
-  { hoursAgo: 3, by: "patient", level: 1, sleep: null, note: "Voice felt quiet on the phone." },
+// Fourteen days of history, roughly three check-ins a day.
+//
+// Rather than write ~120 rows by hand, the pattern is generated: severity peaks
+// before a dose and settles after it, with a slow upward drift across the two
+// weeks so a clinician has an actual trend to find rather than noise.
+const NOTES_BAD = [
+  "Very stiff before the morning dose.",
+  "Slower than usual getting dressed.",
+  "Struggled to get out of the chair.",
+  "Handwriting was hard to read today.",
+  "Froze in the doorway twice.",
+  "Voice felt quiet on the phone.",
 ];
+const NOTES_OK = [
+  "Steady afternoon.",
+  "Managed the stairs without help.",
+  "Felt like a normal day.",
+  "Walked to the shop and back.",
+];
+
+// Severity by hour of day: worst before the 7am dose, easing after each one.
+const HOUR_SEVERITY = {
+  7: 3, // pre-dose trough
+  8: 1,
+  12: 2, // wearing off before lunch dose
+  13: 1,
+  17: 2, // wearing off before evening dose
+  18: 1,
+  21: 2,
+};
+
+const CHECK_IN_HOURS = [8, 13, 21];
+
+function buildCheckIns() {
+  const rows = [];
+  const days = 14;
+
+  for (let day = days - 1; day >= 0; day--) {
+    // A slow worsening trend across the fortnight: older days are slightly
+    // better than recent ones.
+    const drift = (days - 1 - day) / (days - 1); // 0 oldest → 1 today
+
+    CHECK_IN_HOURS.forEach((hour, slot) => {
+      const hoursAgo = day * 24 + (21 - hour);
+      if (hoursAgo <= 0) return;
+
+      const base = HOUR_SEVERITY[hour] ?? 1;
+      const level = Math.min(4, base + (drift > 0.6 ? 1 : 0));
+
+      // A caregiver logs the difficult morning ones more often than the rest.
+      const by = hour === 8 && day % 2 === 0 ? "caregiver" : "patient";
+
+      let note = "";
+      if (level >= 3 && day % 3 === 0) {
+        note = NOTES_BAD[(day + slot) % NOTES_BAD.length];
+      } else if (level <= 1 && day % 4 === 0) {
+        note = NOTES_OK[(day + slot) % NOTES_OK.length];
+      }
+
+      const sleep =
+        hour === 8 ? (level >= 3 ? "bad" : drift > 0.5 ? "ok" : "good") : null;
+
+      rows.push({ hoursAgo, by, level, sleep, note });
+    });
+  }
+  return rows;
+}
+
+const CHECK_INS = buildCheckIns();
 
 // Which symptoms move with severity, and how strongly.
 const WEIGHTS = {
@@ -38,14 +96,47 @@ const WEIGHTS = {
   digestion: 0.4,
 };
 
-const MEALS = [
-  { hoursAgo: 33, protein: "low", food: "Toast and tea" },
-  { hoursAgo: 29, protein: "high", food: "Chicken sandwich" },
-  { hoursAgo: 23, protein: "some", food: "Yoghurt and fruit" },
-  { hoursAgo: 14, protein: "low", food: "Porridge" },
-  { hoursAgo: 10, protein: "high", food: "Eggs and bacon" },
-  { hoursAgo: 5, protein: "unsure", food: "Leftovers from yesterday" },
+// Three meals a day across the same fortnight, cycling through plausible plates
+// so the protein overlay has something to correlate against.
+const BREAKFASTS = [
+  { protein: "low", food: "Toast and tea" },
+  { protein: "low", food: "Porridge with honey" },
+  { protein: "some", food: "Yoghurt and fruit" },
+  { protein: "high", food: "Eggs and bacon" },
 ];
+const LUNCHES = [
+  { protein: "high", food: "Chicken sandwich" },
+  { protein: "some", food: "Lentil soup and bread" },
+  { protein: "low", food: "Jacket potato and salad" },
+  { protein: "high", food: "Tuna salad" },
+];
+const DINNERS = [
+  { protein: "high", food: "Roast chicken and vegetables" },
+  { protein: "high", food: "Salmon and rice" },
+  { protein: "some", food: "Pasta with tomato sauce" },
+  { protein: "unsure", food: "Leftovers" },
+];
+
+function buildMeals() {
+  const rows = [];
+  const days = 14;
+
+  for (let day = days - 1; day >= 0; day--) {
+    [
+      { hour: 8, list: BREAKFASTS },
+      { hour: 13, list: LUNCHES },
+      { hour: 19, list: DINNERS },
+    ].forEach(({ hour, list }, slot) => {
+      const hoursAgo = day * 24 + (21 - hour);
+      if (hoursAgo <= 0) return;
+      const pick = list[(day + slot) % list.length];
+      rows.push({ hoursAgo, ...pick });
+    });
+  }
+  return rows;
+}
+
+const MEALS = buildMeals();
 
 function scoresFor(level, factor) {
   const scores = emptyScores();
