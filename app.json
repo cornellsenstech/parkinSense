@@ -41,7 +41,8 @@
       ]
     ],
     "experiments": {
-      "reactCompiler": true
+      "reactCompiler": true,
+      "baseUrl": "/parkinSense"
     }
   }
 }

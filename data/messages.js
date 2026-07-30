@@ -7,11 +7,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // a per-patient one, because the doctor reads them as a single inbox.
 const KEY = "parkinsense:messages";
 
+// Deliberately no emergency options. A message here may not be read for hours,
+// so anything life-threatening must go to 911 rather than into a queue — the
+// Help screen says so prominently instead of offering a button that could give
+// someone false confidence that help is coming.
 export const QUICK_MESSAGES = [
-  { id: "fall", text: "I have fallen and need help", urgent: true },
-  { id: "frozen", text: "I cannot move — I am frozen", urgent: true },
-  { id: "worse", text: "My symptoms are much worse than usual", urgent: false },
-  { id: "dose", text: "I have a question about my medication", urgent: false },
+  { id: "worse", text: "My symptoms are much worse than usual" },
+  { id: "dose", text: "I have a question about my medication" },
+  { id: "sideeffect", text: "I think I am having a side effect" },
+  { id: "appointment", text: "I would like to arrange an appointment" },
 ];
 
 function clockLabel(date) {

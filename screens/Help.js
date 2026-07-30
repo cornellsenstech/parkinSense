@@ -76,8 +76,6 @@ export default function Help() {
     refresh();
   }
 
-  const urgent = QUICK_MESSAGES.filter((m) => m.urgent);
-  const routine = QUICK_MESSAGES.filter((m) => !m.urgent);
   const awaiting = thread.filter(
     (c) => isOpen(c) && lastTurn(c).from === "patient"
   ).length;
@@ -114,12 +112,12 @@ export default function Help() {
               maxWidth: 520,
             }}
           >
-            For urgent problems only. Tap a message to send it straight to your care
-            team.
+            Send your care team a message about your symptoms or medication. Not for
+            emergencies.
           </Text>
         </View>
         <SpeakButton
-          text={`Get help. For urgent problems only. In a life-threatening emergency, call 911. ${buildThreadSpeech(
+          text={`Get help. In a life-threatening emergency, call 911, do not use this page. ${buildThreadSpeech(
             thread
           )}`}
         />
@@ -197,21 +195,7 @@ export default function Help() {
       <View style={columns(wide, 28)}>
         {/* ---------------- Send something ---------------- */}
         <View style={column(wide)}>
-          <Text style={sectionLabel(scale)}>Urgent</Text>
-          {urgent.map((message) => (
-            <QuickButton
-              key={message.id}
-              scale={scale}
-              icon="alert-circle"
-              label={message.text}
-              tone="urgent"
-              onPress={() => send(message.text, true)}
-            />
-          ))}
-
-          <Text style={{ ...sectionLabel(scale), marginTop: 22 }}>
-            Not urgent, but needs attention
-          </Text>
+          <Text style={sectionLabel(scale)}>What do you need?</Text>
 
           {open ? (
             <View
@@ -242,7 +226,7 @@ export default function Help() {
             </View>
           ) : (
             <>
-              {routine.map((message) => (
+              {QUICK_MESSAGES.map((message) => (
                 <QuickButton
                   key={message.id}
                   scale={scale}
