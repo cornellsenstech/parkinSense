@@ -1,19 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import LevelLineChart, {
-  ChartFooter,
-  ChartLegend,
-} from "../../components/LevelLineChart";
 import StatusBadge from "../../components/StatusBadge";
-import SymptomChart from "../../components/SymptomChart";
+import CombinedChart from "../../components/CombinedChart";
 import { WIDE_WIDTH, page } from "../../components/layout";
 import {
   RANGE_HIGH,
   RANGE_LOW,
   getHistory,
   getSymptomLog,
-  levelTone,
 } from "../../data/history";
 import { loadNote, saveNote } from "../../data/notes";
 
@@ -23,7 +18,6 @@ import { loadNote, saveNote } from "../../data/notes";
 export default function PatientDetail({ patient, onBack }) {
   const readings = getHistory(patient.id);
   const symptoms = getSymptomLog(patient.id);
-  const [selected, setSelected] = useState(readings[readings.length - 1]);
   const [note, setNote] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
 
@@ -54,7 +48,6 @@ export default function PatientDetail({ patient, onBack }) {
     (r) => r.level >= RANGE_LOW && r.level <= RANGE_HIGH
   ).length;
   const percentInRange = Math.round((inRange / readings.length) * 100);
-  const days = [...new Set(readings.map((r) => r.day))];
 
   // An observation built from this patient's own numbers. Cites the actual
   // lowest and highest readings and when they happened, so two patients never
@@ -146,25 +139,14 @@ export default function PatientDetail({ patient, onBack }) {
         </View>
       </Section>
 
-      {/* Level history — the trend is what's clinically useful */}
-      <Section title="Level history">
-        <ChartLegend />
-        {selected ? (
-          <Text className="text-sm text-gray-600 mb-2">
-            Selected: <Text className="font-semibold">{selected.level} ng/mL</Text> •{" "}
-            {selected.time} • {levelTone(selected.level).label}
-          </Text>
-        ) : null}
-        <LevelLineChart
-          data={readings}
-          selectedId={selected ? selected.id : null}
-          onSelect={setSelected}
-        />
-        <ChartFooter days={days} />
-      </Section>
-
-      <Section title="Reported symptoms">
-        <SymptomChart entries={symptoms} />
+      {/* Levels and symptoms together — the correlation is the point, and it
+          cannot be read from two separate charts. */}
+      <Section title="Levels and symptoms together">
+        <CombinedChart readings={readings} symptoms={symptoms} />
+        <Text className="text-xs text-gray-500 mt-2">
+          Dashed lines are symptom scores on the right axis. Solid line is
+          concentration on the left.
+        </Text>
       </Section>
 
       <Section title="Clinician notes">

@@ -1,4 +1,5 @@
-import { useContext, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Card from "../components/Card";
 import { column, columns, page, useWide } from "../components/layout";
@@ -7,6 +8,7 @@ import StatusBadge from "../components/StatusBadge";
 import SymptomStepper from "../components/SymptomStepper";
 import TodayTrend from "../components/TodayTrend";
 import { describeTrend, getTodayTrend } from "../data/history";
+import { removeEntry, saveEntry } from "../data/symptomLog";
 import { patients } from "../data/patients";
 import { RoleContext } from "../context/RoleContext";
 import { AccessibilityContext } from "../context/AccessibilityContext";
@@ -36,6 +38,42 @@ export default function Home() {
 
   const [stiffness, setStiffness] = useState(patient.stiffness);
   const [tremor, setTremor] = useState(patient.tremor);
+
+  // What was just saved, so it can be undone. Holds the previous values too,
+  // because undoing should put the controls back where they were.
+  const [justSaved, setJustSaved] = useState(null);
+  const [saveError, setSaveError] = useState("");
+  const undoTimer = useRef(null);
+
+  // A generous window — a tremor or a moment of hesitation should not cost you
+  // the chance to correct a mis-tap.
+  const UNDO_SECONDS = 20;
+
+  useEffect(() => {
+    return () => clearTimeout(undoTimer.current);
+  }, []);
+
+  async function handleSave() {
+    const entry = await saveEntry(patient.id, { stiffness, tremor });
+    if (!entry) {
+      setSaveError("Could not save — please try again");
+      return;
+    }
+    setSaveError("");
+    setJustSaved({ entry, previous: { stiffness, tremor } });
+
+    clearTimeout(undoTimer.current);
+    undoTimer.current = setTimeout(() => setJustSaved(null), UNDO_SECONDS * 1000);
+  }
+
+  async function handleUndo() {
+    if (!justSaved) return;
+    clearTimeout(undoTimer.current);
+    await removeEntry(patient.id, justSaved.entry.id);
+    setStiffness(justSaved.previous.stiffness);
+    setTremor(justSaved.previous.tremor);
+    setJustSaved(null);
+  }
 
   const trend = getTodayTrend(patient.id);
 
@@ -113,7 +151,7 @@ export default function Home() {
         <SymptomStepper label="Tremor" value={tremor} onChange={setTremor} />
 
         <Pressable
-          onPress={() => console.log("Saved:", { user, stiffness, tremor })}
+          onPress={handleSave}
           accessibilityRole="button"
           accessibilityLabel="Save today's symptoms"
           className="bg-black rounded-2xl items-center justify-center mt-2"
@@ -121,6 +159,76 @@ export default function Home() {
         >
           <Text className="text-white text-lg font-semibold">Save</Text>
         </Pressable>
+
+        {/* Say plainly that it saved, and leave a way back. Without this the
+            button appeared to do nothing at all. */}
+        {justSaved ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              backgroundColor: "#dcfce7",
+              borderRadius: 16,
+              padding: 14,
+              marginTop: 12,
+            }}
+          >
+            <Ionicons name="checkmark-circle" size={26} color="#166534" />
+            <View style={{ marginLeft: 10, flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: 18 * scale,
+                  fontWeight: "700",
+                  color: "#166534",
+                }}
+              >
+                Saved at {justSaved.entry.timeLabel}
+              </Text>
+              <Text style={{ fontSize: 15 * scale, color: "#166534" }}>
+                Stiffness {justSaved.entry.stiffness}, tremor{" "}
+                {justSaved.entry.tremor}
+              </Text>
+            </View>
+            <Pressable
+              onPress={handleUndo}
+              accessibilityRole="button"
+              accessibilityLabel="Undo this save"
+              style={{
+                minHeight: 52,
+                paddingHorizontal: 18,
+                alignItems: "center",
+                justifyContent: "center",
+                borderRadius: 12,
+                backgroundColor: "#ffffff",
+                borderWidth: 2,
+                borderColor: "#86efac",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 17 * scale,
+                  fontWeight: "700",
+                  color: "#166534",
+                }}
+              >
+                Undo
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        {saveError ? (
+          <Text
+            style={{
+              marginTop: 12,
+              fontSize: 17 * scale,
+              fontWeight: "600",
+              color: "#991b1b",
+            }}
+          >
+            {saveError}
+          </Text>
+        ) : null}
       </Card>
 
       </View>
