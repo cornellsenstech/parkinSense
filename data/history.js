@@ -8,6 +8,10 @@ const BASE = [
   1350, 1560, 1280, 950, 700, 520, // 18:00 dose, peak, decay
 ];
 
+// The dosing schedule the curve above is built around. Exported so the meal log
+// can work out whether a meal lands close to a dose.
+export const DOSE_HOURS = [7, 13, 18];
+
 // Each patient absorbs differently, so scale the whole curve.
 const FACTOR = { robert: 1, margaret: 0.65, frank: 0.9, helen: 1.25 };
 

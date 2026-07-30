@@ -2,6 +2,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Card from "../components/Card";
+import MealLogCard from "../components/MealLogCard";
 import { column, columns, page, useWide } from "../components/layout";
 import SensorStatus from "../components/SensorStatusCard";
 import StatusBadge from "../components/StatusBadge";
@@ -141,6 +142,9 @@ export default function Home() {
         <Text className="text-base text-gray-700 mb-4">{describeTrend(trend)}</Text>
         <TodayTrend points={trend} />
       </Card>
+
+      {/* Meals affect absorption, so they sit alongside the level and trend */}
+      <MealLogCard patientId={patient.id} />
 
       </View>
       <View style={column(wide)}>
