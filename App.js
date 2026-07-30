@@ -14,6 +14,7 @@ import DoctorHome from "./screens/doctor/DoctorHome";
 import Messages from "./screens/doctor/Messages";
 import { RoleContext } from "./context/RoleContext";
 import { AccessibilityProvider } from "./context/AccessibilityContext";
+import { getConversations, needsDoctor } from "./data/messages";
 
 // On web, allow ?role=patient or ?role=doctor to pre-select a portal so
 // each can be opened in its own browser tab.
@@ -64,10 +65,36 @@ function PatientPortal() {
 }
 
 function DoctorPortal() {
+  // Count of conversations where a patient spoke last, so the Messages tab can
+  // show a badge without the doctor having to open it to find out.
+  const [waiting, setWaiting] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    const check = () =>
+      getConversations().then((list) => {
+        if (active) setWaiting(list.filter(needsDoctor).length);
+      });
+    check();
+    const timer = setInterval(check, 3000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, []);
+
   return (
     <DoctorTabs.Navigator initialRouteName="Patients" screenOptions={tabScreenOptions}>
       <DoctorTabs.Screen name="Patients" component={DoctorHome} />
-      <DoctorTabs.Screen name="Messages" component={Messages} />
+      <DoctorTabs.Screen
+        name="Messages"
+        component={Messages}
+        options={{
+          // undefined rather than 0, or the badge would render an empty circle.
+          tabBarBadge: waiting || undefined,
+          tabBarBadgeStyle: { backgroundColor: "#dc2626", color: "#ffffff" },
+        }}
+      />
       <DoctorTabs.Screen name="Profile" component={Profile} />
     </DoctorTabs.Navigator>
   );

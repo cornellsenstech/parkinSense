@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { page } from "../../components/layout";
-import { T } from "../../components/theme";
+import { T, sectionLabel } from "../../components/theme";
 import {
   addTurn,
   closeConversation,
@@ -17,6 +17,7 @@ import {
 export default function Messages() {
   const [messages, setMessages] = useState([]);
   const [filter, setFilter] = useState("open");
+  const [who, setWho] = useState("all");
 
   const refresh = useCallback(() => {
     getConversations().then(setMessages);
@@ -32,7 +33,17 @@ export default function Messages() {
 
   const open = messages.filter(needsDoctor);
   const urgent = open.filter((m) => m.urgent);
-  const shown = filter === "open" ? open : messages;
+
+  // Only offer names that have actually written in, so the filter never shows
+  // a patient with nothing behind it.
+  const senders = [...new Set(messages.map((m) => m.patientId))].map((id) => {
+    const match = messages.find((m) => m.patientId === id);
+    return { id, name: match.patientName, waiting: open.some((m) => m.patientId === id) };
+  });
+
+  const shown = (filter === "open" ? open : messages).filter((m) =>
+    who === "all" ? true : m.patientId === who
+  );
 
   return (
     <ScrollView
@@ -109,6 +120,29 @@ export default function Messages() {
         </Pressable>
       </View>
 
+      {/* Filter by patient. Names carry a dot when that patient is waiting. */}
+      {senders.length > 1 ? (
+        <View style={{ marginBottom: 18 }}>
+          <Text style={{ ...sectionLabel(1), marginBottom: 8 }}>Patient</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+            <Tab
+              label="Everyone"
+              active={who === "all"}
+              onPress={() => setWho("all")}
+            />
+            {senders.map((sender) => (
+              <Tab
+                key={sender.id}
+                label={sender.name}
+                dot={sender.waiting}
+                active={who === sender.id}
+                onPress={() => setWho(sender.id)}
+              />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       {shown.length === 0 ? (
         <View
           style={{
@@ -163,22 +197,37 @@ function Count({ value, label, tone, divider }) {
   );
 }
 
-function Tab({ label, active, onPress }) {
+function Tab({ label, active, onPress, dot }) {
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: active }}
+      accessibilityLabel={dot ? `${label}, waiting for a reply` : label}
       style={{
+        flexDirection: "row",
+        alignItems: "center",
         paddingHorizontal: 14,
         paddingVertical: 9,
         marginRight: 8,
+        marginBottom: 8,
         borderRadius: 10,
         backgroundColor: active ? T.ink : "transparent",
         borderWidth: active ? 0 : 1,
         borderColor: T.line,
       }}
     >
+      {dot ? (
+        <View
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: T.bad,
+            marginRight: 7,
+          }}
+        />
+      ) : null}
       <Text
         style={{
           fontSize: 13,

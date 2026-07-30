@@ -45,6 +45,8 @@ export default function Help() {
   const [custom, setCustom] = useState("");
   const [sent, setSent] = useState("");
   const [thread, setThread] = useState([]);
+  const [showPast, setShowPast] = useState(false);
+  const [markUrgent, setMarkUrgent] = useState(false);
 
   const refresh = useCallback(() => {
     getConversationsFor(patient.id).then(setThread);
@@ -67,6 +69,7 @@ export default function Help() {
     });
     setSent(ok ? "Sent to your care team" : "Could not send — please try again");
     setCustom("");
+    setMarkUrgent(false); // don't carry urgency into the next message
     refresh();
   }
 
@@ -80,9 +83,10 @@ export default function Help() {
     (c) => isOpen(c) && lastTurn(c).from === "patient"
   ).length;
 
-  // While a conversation is open, a routine message belongs in it rather than
-  // in a second thread the doctor would have to reconcile.
+  // While a conversation is open, a message belongs in it rather than in a
+  // second thread the doctor would have to reconcile.
   const open = findOpen(thread);
+  const past = thread.filter((c) => !isOpen(c));
 
   return (
     <ScrollView
@@ -195,7 +199,7 @@ export default function Help() {
       <View style={columns(wide, 28)}>
         {/* ---------------- Send something ---------------- */}
         <View style={column(wide)}>
-          <Text style={sectionLabel(scale)}>What do you need?</Text>
+          <Text style={sectionLabel(scale)}>Write your own</Text>
 
           {open ? (
             <View
@@ -219,70 +223,102 @@ export default function Help() {
                   color: T.muted,
                 }}
               >
-                You already have a conversation open. Add to it on the right — your
-                care team will see it there. You can start a new one once they close
-                it.
+                You already have a conversation open. Add to it {wide ? "on the right" : "below"} —
+                your care team will see it there. You can start a new one once they
+                close it.
               </Text>
             </View>
           ) : (
             <>
-              {QUICK_MESSAGES.map((message) => (
-                <QuickButton
-                  key={message.id}
-                  scale={scale}
-                  icon="chatbubble-ellipses"
-                  label={message.text}
-                  tone="calm"
-                  onPress={() => send(message.text, false)}
-                />
-              ))}
+              <TextInput
+                value={custom}
+                onChangeText={setCustom}
+                placeholder="Type a message for your care team"
+                placeholderTextColor={T.faint}
+                multiline
+                textAlignVertical="top"
+                accessibilityLabel="Your message"
+                style={{
+                  minHeight: 130,
+                  padding: 14,
+                  fontSize: 18 * scale,
+                  lineHeight: 25 * scale,
+                  color: T.ink,
+                  backgroundColor: T.surface,
+                  borderWidth: 2,
+                  borderColor: T.line,
+                  borderRadius: 16,
+                }}
+              />
 
-              <Text style={{ ...sectionLabel(scale), marginTop: 20 }}>
-                Write your own
-              </Text>
-          <TextInput
-            value={custom}
-            onChangeText={setCustom}
-            placeholder="Type a message for your care team"
-            placeholderTextColor={T.faint}
-            multiline
-            textAlignVertical="top"
-            accessibilityLabel="Your message"
-            style={{
-              minHeight: 110,
-              padding: 14,
-              fontSize: 18 * scale,
-              lineHeight: 25 * scale,
-              color: T.ink,
-              backgroundColor: T.surface,
-              borderWidth: 2,
-              borderColor: T.line,
-              borderRadius: 16,
-            }}
-          />
-          <Pressable
-            onPress={() => send(custom, false)}
-            disabled={!custom.trim()}
-            accessibilityRole="button"
-            accessibilityLabel="Send message"
-            style={{
-              minHeight: 60,
-              marginTop: 10,
-              alignItems: "center",
-              justifyContent: "center",
-              borderRadius: 16,
-              backgroundColor: custom.trim() ? T.ink : T.raised,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: 18 * scale,
-                fontWeight: "700",
-                color: custom.trim() ? "#ffffff" : T.faint,
-              }}
-            >
-              Send message
-            </Text>
+              {/* The patient decides what counts as urgent — better than asking
+                  them to pick from a fixed list of emergencies. */}
+              <Pressable
+                onPress={() => setMarkUrgent(!markUrgent)}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: markUrgent }}
+                accessibilityLabel="Mark this message as urgent"
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  minHeight: 60,
+                  marginTop: 10,
+                  paddingHorizontal: 14,
+                  borderRadius: 14,
+                  backgroundColor: markUrgent ? T.badBg : T.surface,
+                  borderWidth: markUrgent ? 2 : 1,
+                  borderColor: markUrgent ? T.badLine : T.line,
+                }}
+              >
+                <Ionicons
+                  name={markUrgent ? "checkbox" : "square-outline"}
+                  size={24}
+                  color={markUrgent ? T.bad : T.muted}
+                />
+                <View style={{ marginLeft: 10, flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 17 * scale,
+                      fontWeight: "700",
+                      color: markUrgent ? T.bad : T.ink,
+                    }}
+                  >
+                    Mark as urgent
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: 14 * scale,
+                      color: markUrgent ? T.bad : T.faint,
+                    }}
+                  >
+                    Needs attention today. Not for emergencies — call 911.
+                  </Text>
+                </View>
+              </Pressable>
+
+              <Pressable
+                onPress={() => send(custom, markUrgent)}
+                disabled={!custom.trim()}
+                accessibilityRole="button"
+                accessibilityLabel="Send message"
+                style={{
+                  minHeight: 60,
+                  marginTop: 10,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 16,
+                  backgroundColor: custom.trim() ? T.ink : T.raised,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: 18 * scale,
+                    fontWeight: "700",
+                    color: custom.trim() ? "#ffffff" : T.faint,
+                  }}
+                >
+                  {markUrgent ? "Send urgent message" : "Send message"}
+                </Text>
               </Pressable>
             </>
           )}
@@ -338,7 +374,8 @@ export default function Help() {
             </View>
           ) : null}
 
-          {thread.map((conversation) => (
+          {/* The live conversation first — that is the one being acted on. */}
+          {thread.filter(isOpen).map((conversation) => (
             <Thread
               key={conversation.id}
               conversation={conversation}
@@ -346,6 +383,80 @@ export default function Help() {
               onReply={(text) => reply(conversation.id, text)}
             />
           ))}
+
+          {/* Finished conversations kept separately, so the current one is
+              never buried under a history of closed ones. */}
+          {past.length ? (
+            <View style={{ marginTop: thread.some(isOpen) ? 22 : 0 }}>
+              <Pressable
+                onPress={() => setShowPast(!showPast)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showPast }}
+                accessibilityLabel={`${showPast ? "Hide" : "Show"} ${past.length} past conversations`}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  minHeight: 56,
+                  paddingHorizontal: 16,
+                  borderRadius: 14,
+                  backgroundColor: T.surface,
+                  borderWidth: 1,
+                  borderColor: T.line,
+                  marginBottom: showPast ? 12 : 0,
+                }}
+              >
+                <Ionicons
+                  name={showPast ? "chevron-down" : "chevron-forward"}
+                  size={20}
+                  color={T.muted}
+                />
+                <Text
+                  style={{
+                    marginLeft: 10,
+                    fontSize: 17 * scale,
+                    fontWeight: "700",
+                    color: T.ink,
+                  }}
+                >
+                  Past conversations
+                </Text>
+                <Text
+                  style={{ marginLeft: 8, fontSize: 16 * scale, color: T.faint }}
+                >
+                  {past.length}
+                </Text>
+              </Pressable>
+
+              {showPast
+                ? past.map((conversation) => (
+                    <Thread
+                      key={conversation.id}
+                      conversation={conversation}
+                      scale={scale}
+                      onReply={() => {}}
+                    />
+                  ))
+                : null}
+            </View>
+          ) : null}
+
+          {/* Common messages, one tap each. Hidden while a conversation is open,
+              because tapping one would start a second thread. */}
+          {open ? null : (
+            <View style={{ marginTop: 24 }}>
+              <Text style={sectionLabel(scale)}>What do you need?</Text>
+              {QUICK_MESSAGES.map((message) => (
+                <QuickButton
+                  key={message.id}
+                  scale={scale}
+                  icon="chatbubble-ellipses"
+                  label={message.text}
+                  tone="calm"
+                  onPress={() => send(message.text, false)}
+                />
+              ))}
+            </View>
+          )}
         </View>
       </View>
     </ScrollView>
