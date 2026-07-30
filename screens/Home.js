@@ -132,16 +132,6 @@ export default function Home() {
         </Text>
       </Card>
 
-      {/* Forecast — the one thing the device knows that the patient does not */}
-      {forecast ? (
-        <ForecastCard
-          forecast={forecast}
-          scale={scale}
-          showInfo={showForecastInfo}
-          onToggleInfo={() => setShowForecastInfo(!showForecastInfo)}
-        />
-      ) : null}
-
       {/* Trend */}
       <Card
         title="Today's trend"
@@ -243,6 +233,17 @@ export default function Home() {
           </Text>
         ) : null}
       </Card>
+
+      {/* Forecast sits under the symptom check-in: what you have just reported
+          and what is likely to happen next belong together. */}
+      {forecast ? (
+        <ForecastCard
+          forecast={forecast}
+          scale={scale}
+          showInfo={showForecastInfo}
+          onToggleInfo={() => setShowForecastInfo(!showForecastInfo)}
+        />
+      ) : null}
 
       </View>
       </View>
