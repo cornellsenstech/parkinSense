@@ -356,10 +356,11 @@ function ForecastCard({ forecast, scale, showInfo, onToggleInfo }) {
               color: "#3d5257",
             }}
           >
-            Your medicine clears from your blood at a steady rate. By comparing
-            your two most recent readings, the app works out how fast your level
-            is dropping and estimates when it will fall below your usual range —
-            the point where symptoms often return.
+            Your medicine clears from your blood at a steady rate. The app looks
+            at the trend across your readings from the last hour and a half —
+            not just the latest one — works out how fast your level is dropping,
+            and estimates when it will fall below your usual range, the point
+            where symptoms often return.
           </Text>
           <Text
             style={{
@@ -369,9 +370,11 @@ function ForecastCard({ forecast, scale, showInfo, onToggleInfo }) {
               marginTop: 12,
             }}
           >
-            It is an estimate, not a certainty. Food, activity and sleep all
-            change how quickly your level falls, and no estimate is shown when
-            your level is rising or the readings are unclear.
+            It is an estimate, not a certainty — which is why you see a range
+            rather than an exact time. Food, activity and sleep all change how
+            quickly your level falls, and no estimate is shown at all when your
+            level is rising or your readings are too uneven to read a trend
+            from.
           </Text>
           <Text
             style={{
