@@ -6,6 +6,7 @@ import LevelLineChart, {
 } from "../components/LevelLineChart";
 import SymptomHistoryChart from "../components/SymptomHistoryChart";
 import SymptomTable from "../components/SymptomTable";
+import MealChart from "../components/MealChart";
 import { chronological, loadEntries } from "../data/symptomLog";
 import {
   PROTEIN_LEVELS,
@@ -186,13 +187,15 @@ export default function History() {
       {/* Meals, because protein competes with levodopa for absorption */}
       {showMeals && meals.length ? (
         <View style={{ marginTop: 22 }}>
-          <Text
-            className="font-bold text-gray-900 mb-2"
-            style={{ fontSize: 20 * scale }}
-          >
-            Meals
-          </Text>
-          {meals.map((meal) => {
+          {groupByDate(meals).map((group) => (
+            <View key={group.label}>
+              <Text
+                className="font-bold text-gray-900 mb-2 mt-3"
+                style={{ fontSize: 18 * scale }}
+              >
+                {group.label}
+              </Text>
+              {group.items.map((meal) => {
             const near = doseProximity(meal);
             return (
               <View
@@ -280,11 +283,40 @@ export default function History() {
                 ) : null}
               </View>
             );
-          })}
+              })}
+            </View>
+          ))}
         </View>
       ) : null}
     </ScrollView>
   );
+}
+
+// Groups entries under a date heading, newest day first, so a fortnight of meals
+// reads as days rather than one undifferentiated list.
+function groupByDate(items) {
+  const groups = new Map();
+  items.forEach((item) => {
+    const at = new Date(item.eatenAt ?? item.savedAt);
+    const key = at.toDateString();
+    if (!groups.has(key)) {
+      groups.set(key, { label: labelForDate(at), at: at.getTime(), items: [] });
+    }
+    groups.get(key).items.push(item);
+  });
+  return [...groups.values()].sort((a, b) => b.at - a.at);
+}
+
+function labelForDate(date) {
+  const today = new Date();
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  if (date.toDateString() === today.toDateString()) return "Today";
+  if (date.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return date.toLocaleDateString([], {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function LevelStats({ readings }) {
@@ -309,6 +341,8 @@ function LevelStats({ readings }) {
 // high-protein meal landed close to a dose, since that is when absorption is
 // actually affected.
 function MealStats({ meals, scale }) {
+  const [chartWidth, setChartWidth] = useState(320);
+
   if (!meals.length) {
     return (
       <Text style={{ fontSize: 16 * scale, color: "#64748b" }}>
@@ -330,7 +364,18 @@ function MealStats({ meals, scale }) {
         Meals and your medication
       </Text>
 
-      <View className="flex-row">
+      {/* Protein across the day, against the dose times.
+          Starts at a sensible width rather than rendering nothing: with a null
+          child the wrapper had no layout, so onLayout never fired and the chart
+          never appeared. */}
+      <View
+        style={{ width: "100%" }}
+        onLayout={(e) => setChartWidth(e.nativeEvent.layout.width)}
+      >
+        <MealChart meals={meals} width={chartWidth} scale={scale} />
+      </View>
+
+      <View className="flex-row mt-3">
         <Stat value={meals.length} label="Meals logged" />
         <Stat value={highProtein} label="High protein" divider />
         <Stat value={clashes} label="Close to a dose" divider />
