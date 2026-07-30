@@ -1,93 +1,130 @@
-import Slider from "@react-native-community/slider";
-import { useState } from "react";
-import { Image, Pressable, ScrollView, Text, View } from "react-native";
+import { useContext, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import Card from "../components/Card";
+import { column, columns, page, useWide } from "../components/layout";
 import SensorStatus from "../components/SensorStatusCard";
+import StatusBadge from "../components/StatusBadge";
+import SymptomStepper from "../components/SymptomStepper";
+import TodayTrend from "../components/TodayTrend";
+import { describeTrend, getTodayTrend } from "../data/history";
+import { patients } from "../data/patients";
+import { RoleContext } from "../context/RoleContext";
+import { AccessibilityContext } from "../context/AccessibilityContext";
+
+// Someone recorded as "Dr. Alan Reed" should be greeted as Alan, not Dr.
+const TITLES = ["mr", "mrs", "ms", "miss", "dr", "prof"];
+
+function firstNameOf(fullName) {
+  const parts = fullName.split(" ");
+  const first = parts[0].replace(".", "").toLowerCase();
+  return TITLES.includes(first) && parts.length > 1 ? parts[1] : parts[0];
+}
+
+function greetingFor(hour) {
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function Home() {
-  const [stiffness, setStiffness] = useState(0);
-  const [tremor, setTremor] = useState(0);
-  // variables for sensor status
-  const [isConnected, setIsConnected] = useState(false);
-  const [batteryPct, setBatteryPct] = useState(49);
+  const { user } = useContext(RoleContext);
+  const { scale } = useContext(AccessibilityContext);
+  const wide = useWide();
+  const patient = patients.find((p) => p.id === user) || patients[0];
+  const firstName = firstNameOf(patient.name);
+  const greeting = greetingFor(new Date().getHours());
+
+  const [stiffness, setStiffness] = useState(patient.stiffness);
+  const [tremor, setTremor] = useState(patient.tremor);
+
+  const trend = getTodayTrend(patient.id);
+
   return (
-    <ScrollView className="flex-1 bg-white p-10">
-      <Text className="text-4xl text-left font-semibold">Good Afternoon</Text>
-      <Text className="text-4xl text-left font-black mb-7">Kermit!</Text>
-hhh
-      <SensorStatus isConnected={true} batteryPct={10}/>
-
-      <View className="bg-gray-100 rounded-xl p-4 mb-6">
-        <Text className="text-xl pt-2">Current Levels</Text>
-
-        <View className="flex-row items-end mt-4">
-          <Text className="text-5xl font-semibold">2.8</Text>
-          <Text className="text-2xl text-gray-500 ml-2 mb-1">ng/mL</Text>
-        </View>
-
-        <View className="self-start flex-row items-center rounded-full bg-green-200 px-4 py-2 mt-3">
-          <View className="w-2 h-2 rounded-full bg-green-400 mr-2" />
-          <Text className="text-sm font-medium">In range</Text>
-        </View>
-
-        <Text className="text-sm text-gray-500 mt-3">
-          Updated 4 minutes ago
-        </Text>
+    <ScrollView
+      className="flex-1 bg-gray-50"
+      contentContainerStyle={page(undefined, 24)}
+    >
+      {/* Greeting and device on one compact line each, rather than two big
+          blocks — the level below is what deserves the space. */}
+      <Text
+        style={{
+          fontSize: 30 * scale,
+          lineHeight: 36 * scale,
+          fontWeight: "800",
+          letterSpacing: -0.4,
+          color: "#0f172a",
+        }}
+      >
+        {greeting}, {firstName}
+      </Text>
+      <View style={{ marginTop: 10, marginBottom: 22 }}>
+        <SensorStatus
+          isConnected={patient.connected}
+          batteryPct={patient.batteryPct}
+        />
       </View>
 
-      <View className="flex-1 bg-white mb-5">
-        <Text className="text-2xl font-semibold mb-2">
-          How are you feeling?
-        </Text>
+      {/* Two columns on a wide screen so the page fills the space without any
+          one card growing an over-long line. Stacks on a phone. */}
+      <View style={columns(wide, 24)}>
+      <View style={column(wide)}>
 
-        <Text className="text-sm text-gray-500 mb-6">0 = none, 4 = severe</Text>
-
-        <View className="bg-gray-100 rounded-2xl p-3">
-          <Text className="text-base font-medium mb-1">Stiffness</Text>
-
-          <Slider
-            minimumValue={0}
-            maximumValue={4}
-            step={1}
-            value={stiffness}
-            onValueChange={setStiffness}
-            minimumTrackTintColor="#86efac"
-            maximumTrackTintColor="#e5e7eb"
-            thumbTintColor="#86efac"
-          />
-
-          <Text className="text-sm text-gray-500 mt-2">{stiffness}/4</Text>
-
-          <Text className="text-base font-medium mb-2">Tremor</Text>
-
-          <Slider
-            minimumValue={0}
-            maximumValue={4}
-            step={1}
-            value={tremor}
-            onValueChange={setTremor}
-            minimumTrackTintColor="#86efac"
-            maximumTrackTintColor="#e5e7eb"
-            thumbTintColor="#86efac"
-          />
-
-          <Text className="text-sm text-gray-500 mt-1">{tremor}/4</Text>
+      {/* Current level */}
+      <Card
+        title="Your level"
+        speakText={`Your level is ${patient.level} ng/mL, ${
+          patient.inRange ? "in range" : "out of range"
+        }. Updated ${patient.lastUpdated}.`}
+      >
+        <View className="flex-row items-end">
+          <Text className="text-6xl font-bold text-gray-900">{patient.level}</Text>
+          <Text className="text-2xl text-gray-600 ml-2 mb-2">{patient.unit}</Text>
         </View>
+        <View className="mt-4">
+          <StatusBadge
+            tone={patient.inRange ? "good" : "warn"}
+            label={patient.inRange ? "In range" : "Out of range"}
+          />
+        </View>
+        <Text className="text-base text-gray-600 mt-4">
+          Updated {patient.lastUpdated}
+        </Text>
+      </Card>
 
-       
+      {/* Trend */}
+      <Card
+        title="Today's trend"
+        subtitle="Midnight to now, in 24 steps"
+        speakText={`Today's trend. ${describeTrend(trend)}`}
+      >
+        <Text className="text-base text-gray-700 mb-4">{describeTrend(trend)}</Text>
+        <TodayTrend points={trend} />
+      </Card>
+
+      </View>
+      <View style={column(wide)}>
+
+      {/* Symptom check-in */}
+      <Card
+        title="How are you feeling?"
+        subtitle="Tap the level that fits — 0 is none, 4 is severe"
+      >
+        <SymptomStepper label="Stiffness" value={stiffness} onChange={setStiffness} />
+        <SymptomStepper label="Tremor" value={tremor} onChange={setTremor} />
 
         <Pressable
-          onPress={() => console.log("Saved stiffness:", stiffness)}
-          className="bg-black rounded-xl py-3 mt-6 items-center"
+          onPress={() => console.log("Saved:", { user, stiffness, tremor })}
+          accessibilityRole="button"
+          accessibilityLabel="Save today's symptoms"
+          className="bg-black rounded-2xl items-center justify-center mt-2"
+          style={{ minHeight: 56 }}
         >
-          <Text className="text-white font-semibold">Save</Text>
+          <Text className="text-white text-lg font-semibold">Save</Text>
         </Pressable>
+      </Card>
+
       </View>
-      <Text className="text-2xl font-semibold mb-2">
-          Today&apos;s Trend
-        </Text>
-        <Image source={require("../images/output.png")} style={{ width: 300, height: 150 }}/>
-
-
+      </View>
     </ScrollView>
   );
 }

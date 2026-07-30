@@ -1,19 +1,48 @@
-import React from "react";
-import { View, Text } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useContext } from "react";
+import { Text, View } from "react-native";
+import { AccessibilityContext } from "../context/AccessibilityContext";
 
-export default function SensorStatus({isConnected,batteryPct}){
-    const statusText = isConnected ? "Connected" : "Not Connected";
-    const isReady = isConnected && batteryPct >= 20;
-    const subText = isConnected
-    ? `Battery: ${batteryPct ?? "--"}% • ${isReady ? "Ready" : "Battery low — please charge"}`
-    : "Make sure your sensor is nearby";
-    return (
-        <View className = "bg-gray-100 rounded-xl p-4 mb-6">
-            <View className = "flex-row">
-                <View className = {`w-2 h-2 rounded-full ${isConnected? isReady? "bg-green-500" : "bg-orange-500" : "bg-red-500"} mr-2 mt-3`}></View>
-                <Text className="text-lg font-bold">{statusText}</Text>
-            </View>
-            <Text className="mt-1 text-sm text-gray-600">{subText}</Text>
-        </View>
-    );
+// A single slim line rather than a full card. The device is background
+// information most of the time — it only needs to be prominent when something
+// is wrong, which the colour and icon handle.
+export default function SensorStatus({ isConnected, batteryPct }) {
+  const { scale } = useContext(AccessibilityContext);
+  const isReady = isConnected && batteryPct >= 20;
+
+  const ink = !isConnected ? "#991b1b" : isReady ? "#166534" : "#9a3412";
+  const bg = !isConnected ? "#fee2e2" : isReady ? "#dcfce7" : "#ffedd5";
+  const icon = !isConnected ? "close-circle" : isReady ? "bluetooth" : "battery-half";
+
+  const text = !isConnected
+    ? "Sensor not connected"
+    : isReady
+    ? `Connected • Battery ${batteryPct}%`
+    : `Connected • Battery ${batteryPct}% — please charge`;
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        alignSelf: "flex-start",
+        backgroundColor: bg,
+        borderRadius: 999,
+        paddingHorizontal: 14,
+        paddingVertical: 9,
+      }}
+    >
+      <Ionicons name={icon} size={18} color={ink} />
+      <Text
+        style={{
+          marginLeft: 8,
+          fontSize: 16 * scale,
+          fontWeight: "600",
+          color: ink,
+        }}
+      >
+        {text}
+      </Text>
+    </View>
+  );
 }
