@@ -12,7 +12,7 @@ import {
 import EventMap from "../components/EventMap";
 import { READING_WIDTH, WIDE_WIDTH, page } from "../components/layout";
 import SpeakButton from "../components/SpeakButton";
-import { EVENTS } from "../data/events";
+import { EVENTS, LOCAL_RADIUS_MILES, ONLINE_EVENTS } from "../data/events";
 import { fetchNearbyPlaces, geocode, milesBetween } from "../data/places";
 import { loadSaved, toggleSaved } from "../data/savedEvents";
 import { timingFor } from "../data/timing";
@@ -116,23 +116,41 @@ export default function Community() {
   }
 
   const items = useMemo(() => {
-    const all = [...EVENTS, ...places].map((item) => ({
+    // Anything with coordinates gets a distance and is dropped if it is too far
+    // from where the patient is looking.
+    const nearby = [...EVENTS, ...places]
+      .map((item) => ({ ...item, miles: milesBetween(center, item) }))
+      .filter((item) => item.live || item.miles <= LOCAL_RADIUS_MILES);
+
+    // Online programmes have no location, so they always apply.
+    const online = ONLINE_EVENTS.map((item) => ({ ...item, miles: null }));
+
+    const all = [...nearby, ...online].map((item) => ({
       ...item,
-      miles: milesBetween(center, item),
       timing: timingFor(user, item.startHour),
       isSaved: saved.includes(item.id),
     }));
 
     const text = nameQuery.trim().toLowerCase();
-    return all
-      .filter((item) => (savedOnly ? item.isSaved : true))
-      .filter((item) => (category === "all" ? true : item.kind === category))
-      .filter((item) => (stepFreeOnly ? item.stepFree : true))
-      .filter((item) =>
-        text ? `${item.name} ${item.venue}`.toLowerCase().includes(text) : true
-      )
-      .sort((a, b) => a.miles - b.miles);
+    return (
+      all
+        .filter((item) => (savedOnly ? item.isSaved : true))
+        .filter((item) => (category === "all" ? true : item.kind === category))
+        .filter((item) => (stepFreeOnly ? item.stepFree : true))
+        .filter((item) =>
+          text ? `${item.name} ${item.venue}`.toLowerCase().includes(text) : true
+        )
+        // Nearest first, with online programmes after anything local.
+        .sort((a, b) => {
+          if (a.miles === null) return 1;
+          if (b.miles === null) return -1;
+          return a.miles - b.miles;
+        })
+    );
   }, [places, center, saved, savedOnly, category, stepFreeOnly, nameQuery, user]);
+
+  // Only things with coordinates can be drawn on the map.
+  const mapped = items.filter((item) => item.miles !== null);
 
   const shown = items.slice(0, visible);
 
@@ -335,7 +353,7 @@ export default function Community() {
               borderColor: C.line,
             }}
           >
-            <EventMap center={center} items={items} />
+            <EventMap center={center} items={mapped} />
           </View>
           <Text
             style={{
@@ -345,7 +363,8 @@ export default function Community() {
               marginBottom: 22,
             }}
           >
-            Everything listed below is marked on the map. Use + and − to zoom.
+            {mapped.length} of these have a location and are marked on the map. Use +
+            and − to zoom.
           </Text>
 
           {loading ? (
@@ -430,7 +449,9 @@ export default function Community() {
 
           {visible < items.length ? (
             <Pressable
-              onPress={() => setVisible(visible + PAGE)}
+              // Functional update, so a double tap advances twice rather than
+              // reading a stale count and advancing once.
+              onPress={() => setVisible((current) => current + PAGE)}
               accessibilityRole="button"
               accessibilityLabel="Show more places"
               style={{
@@ -544,7 +565,7 @@ function PlaceCard({ item, onSave, scale }) {
     item.day ? `${item.day} at ${item.time}` : "",
     // Only mention timing when there is something to flag, matching the card.
     item.timing && !good ? item.timing.label : "",
-    `${item.miles.toFixed(1)} miles away`,
+    item.miles === null ? "Online" : `${item.miles.toFixed(1)} miles away`,
   ]
     .filter(Boolean)
     .join(". ");
@@ -652,7 +673,11 @@ function PlaceCard({ item, onSave, scale }) {
       <View
         style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}
       >
-        <Fact scale={scale} icon="navigate" label={`${item.miles.toFixed(1)} miles`} />
+        {item.miles === null ? (
+          <Fact scale={scale} icon="globe" label="Online — no travel" />
+        ) : (
+          <Fact scale={scale} icon="navigate" label={`${item.miles.toFixed(1)} miles`} />
+        )}
         {item.stepFree ? <Fact scale={scale} icon="accessibility" label="No steps" /> : null}
         {item.seated ? <Fact scale={scale} icon="body" label="Can sit down" /> : null}
         {item.caregiverWelcome ? (
