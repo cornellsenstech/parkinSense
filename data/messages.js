@@ -1,7 +1,10 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Messages from patients to their care team. One shared list rather than a
-// per-patient one, because the doctor reads them as a single inbox.
+// Conversations between a patient and their care team.
+//
+// Each entry is a thread, not a single message: `turns` is an ordered list of
+// who said what, so either side can keep replying. One shared list rather than
+// a per-patient one, because the doctor reads them as a single inbox.
 const KEY = "parkinsense:messages";
 
 export const QUICK_MESSAGES = [
@@ -11,80 +14,128 @@ export const QUICK_MESSAGES = [
   { id: "dose", text: "I have a question about my medication", urgent: false },
 ];
 
-export async function getMessages() {
+function clockLabel(date) {
+  return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+}
+
+function makeTurn(from, text) {
+  const now = new Date();
+  return {
+    from, // "patient" | "doctor"
+    text: text.trim(),
+    sentAt: now.getTime(),
+    timeLabel: clockLabel(now),
+  };
+}
+
+// Conversations saved before threads existed had a single `text` plus an
+// optional `reply`. Convert them on read so old demo data still opens.
+function migrate(entry) {
+  if (Array.isArray(entry.turns)) return entry;
+
+  const turns = [
+    {
+      from: "patient",
+      text: entry.text,
+      sentAt: entry.sentAt,
+      timeLabel: entry.timeLabel,
+    },
+  ];
+  if (entry.reply) turns.push({ from: "doctor", ...entry.reply });
+
+  return {
+    id: entry.id,
+    patientId: entry.patientId,
+    patientName: entry.patientName,
+    urgent: Boolean(entry.urgent),
+    handled: Boolean(entry.read),
+    turns,
+  };
+}
+
+export function lastTurn(conversation) {
+  return conversation.turns[conversation.turns.length - 1];
+}
+
+// The doctor's cue: the patient spoke last and nobody has closed it off.
+export function needsDoctor(conversation) {
+  return !conversation.handled && lastTurn(conversation).from === "patient";
+}
+
+async function readAll() {
   try {
-    const saved = await AsyncStorage.getItem(KEY);
-    const list = saved ? JSON.parse(saved) : [];
-    // Urgent first, then newest — the order a doctor needs to read them in.
-    return list.sort((a, b) => {
-      if (a.urgent !== b.urgent) return a.urgent ? -1 : 1;
-      return b.sentAt - a.sentAt;
-    });
+    const raw = await AsyncStorage.getItem(KEY);
+    return raw ? JSON.parse(raw).map(migrate) : [];
   } catch {
     return [];
   }
 }
 
-export async function sendMessage({ patientId, patientName, text, urgent }) {
+async function writeAll(list) {
   try {
-    const saved = await AsyncStorage.getItem(KEY);
-    const list = saved ? JSON.parse(saved) : [];
-    const message = {
-      id: `m-${list.length}-${text.length}-${patientId}`,
-      patientId,
-      patientName,
-      text,
-      urgent: Boolean(urgent),
-      // Stored as a number so sorting never depends on date parsing.
-      sentAt: Date.now(),
-      timeLabel: new Date().toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-      }),
-      read: false,
-    };
-    await AsyncStorage.setItem(KEY, JSON.stringify([message, ...list]));
+    await AsyncStorage.setItem(KEY, JSON.stringify(list));
     return true;
   } catch {
     return false;
   }
 }
 
-export async function markRead(messageId) {
-  return update(messageId, (message) => ({ ...message, read: true }));
+// Urgent and waiting first, then whatever moved most recently — the order a
+// doctor needs to read them in.
+function triageOrder(a, b) {
+  const aWaiting = needsDoctor(a);
+  const bWaiting = needsDoctor(b);
+  if (aWaiting !== bWaiting) return aWaiting ? -1 : 1;
+  if (aWaiting && a.urgent !== b.urgent) return a.urgent ? -1 : 1;
+  return lastTurn(b).sentAt - lastTurn(a).sentAt;
 }
 
-// A doctor's reply is attached to the message it answers, so the patient sees
-// the exchange as a thread rather than a loose inbox. Replying also marks the
-// message handled — answering it is what "handled" means.
-export async function replyToMessage(messageId, text) {
-  const reply = {
-    text: text.trim(),
-    sentAt: Date.now(),
-    timeLabel: new Date().toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-    }),
+export async function getConversations() {
+  const list = await readAll();
+  return list.sort(triageOrder);
+}
+
+// The patient only sees their own threads.
+export async function getConversationsFor(patientId) {
+  const all = await getConversations();
+  return all.filter((c) => c.patientId === patientId);
+}
+
+export async function startConversation({ patientId, patientName, text, urgent }) {
+  if (!text.trim()) return false;
+  const list = await readAll();
+  const conversation = {
+    id: `c-${Date.now()}-${patientId}`,
+    patientId,
+    patientName,
+    urgent: Boolean(urgent),
+    handled: false,
+    turns: [makeTurn("patient", text)],
   };
-  return update(messageId, (message) => ({ ...message, reply, read: true }));
+  return writeAll([conversation, ...list]);
 }
 
-// Read, change one message, write back. Shared so every mutation follows the
-// same path and can't drift.
-async function update(messageId, change) {
-  try {
-    const saved = await AsyncStorage.getItem(KEY);
-    const list = saved ? JSON.parse(saved) : [];
-    const next = list.map((m) => (m.id === messageId ? change(m) : m));
-    await AsyncStorage.setItem(KEY, JSON.stringify(next));
-    return true;
-  } catch {
-    return false;
-  }
+// Adding a turn reopens the thread: a patient replying to a closed
+// conversation should put it back in front of the doctor.
+export async function addTurn(conversationId, from, text) {
+  if (!text.trim()) return false;
+  const list = await readAll();
+  const next = list.map((c) =>
+    c.id === conversationId
+      ? {
+          ...c,
+          turns: [...c.turns, makeTurn(from, text)],
+          handled: from === "doctor" ? c.handled : false,
+        }
+      : c
+  );
+  return writeAll(next);
 }
 
-// The patient only sees their own messages.
-export async function getMessagesFor(patientId) {
-  const all = await getMessages();
-  return all.filter((m) => m.patientId === patientId);
+export async function markHandled(conversationId) {
+  const list = await readAll();
+  const next = list.map((c) =>
+    c.id === conversationId ? { ...c, handled: true } : c
+  );
+  return writeAll(next);
 }

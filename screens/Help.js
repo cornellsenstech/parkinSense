@@ -4,7 +4,13 @@ import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import SpeakButton from "../components/SpeakButton";
 import { column, columns, page, useWide } from "../components/layout";
 import { T, sectionLabel } from "../components/theme";
-import { QUICK_MESSAGES, getMessagesFor, sendMessage } from "../data/messages";
+import {
+  QUICK_MESSAGES,
+  addTurn,
+  getConversationsFor,
+  lastTurn,
+  startConversation,
+} from "../data/messages";
 import { DOCTOR_NAME, patients } from "../data/patients";
 import { AccessibilityContext } from "../context/AccessibilityContext";
 import { RoleContext } from "../context/RoleContext";
@@ -14,11 +20,17 @@ import { RoleContext } from "../context/RoleContext";
 function buildThreadSpeech(thread) {
   if (!thread.length) return "You have not sent any messages yet.";
   return thread
-    .map((m) =>
-      m.reply
-        ? `You said: ${m.text}. ${DOCTOR_NAME} replied: ${m.reply.text}.`
-        : `You said: ${m.text}. No reply yet.`
-    )
+    .map((conversation) => {
+      const spoken = conversation.turns
+        .map((turn) =>
+          turn.from === "doctor"
+            ? `${DOCTOR_NAME} said: ${turn.text}`
+            : `You said: ${turn.text}`
+        )
+        .join(". ");
+      const waiting = lastTurn(conversation).from === "patient";
+      return waiting ? `${spoken}. No reply yet.` : spoken;
+    })
     .join(" ");
 }
 
@@ -33,7 +45,7 @@ export default function Help() {
   const [thread, setThread] = useState([]);
 
   const refresh = useCallback(() => {
-    getMessagesFor(patient.id).then(setThread);
+    getConversationsFor(patient.id).then(setThread);
   }, [patient.id]);
 
   useEffect(() => {
@@ -45,10 +57,10 @@ export default function Help() {
 
   async function send(text, urgent) {
     if (!text.trim()) return;
-    const ok = await sendMessage({
+    const ok = await startConversation({
       patientId: patient.id,
       patientName: patient.name,
-      text: text.trim(),
+      text,
       urgent,
     });
     setSent(ok ? "Sent to your care team" : "Could not send — please try again");
@@ -56,9 +68,15 @@ export default function Help() {
     refresh();
   }
 
+  // A follow-up inside an existing thread, rather than a new conversation.
+  async function reply(conversationId, text) {
+    await addTurn(conversationId, "patient", text);
+    refresh();
+  }
+
   const urgent = QUICK_MESSAGES.filter((m) => m.urgent);
   const routine = QUICK_MESSAGES.filter((m) => !m.urgent);
-  const awaiting = thread.filter((m) => !m.reply).length;
+  const awaiting = thread.filter((c) => lastTurn(c).from === "patient").length;
 
   return (
     <ScrollView
@@ -285,8 +303,13 @@ export default function Help() {
             </View>
           ) : null}
 
-          {thread.map((message) => (
-            <Exchange key={message.id} message={message} scale={scale} />
+          {thread.map((conversation) => (
+            <Thread
+              key={conversation.id}
+              conversation={conversation}
+              scale={scale}
+              onReply={(text) => reply(conversation.id, text)}
+            />
           ))}
         </View>
       </View>
@@ -337,9 +360,20 @@ function QuickButton({ icon, label, tone, onPress, scale }) {
   );
 }
 
-// One sent message and its reply, presented as a pair so it reads as a
-// conversation rather than two separate records.
-function Exchange({ message, scale }) {
+// A whole conversation: every turn in order, plus a box to add another. Turns
+// are indented differently by side so the back-and-forth is readable at a
+// glance without relying on colour alone.
+function Thread({ conversation, scale, onReply }) {
+  const [draft, setDraft] = useState("");
+  const waiting = lastTurn(conversation).from === "patient";
+
+  async function send() {
+    if (!draft.trim()) return;
+    const text = draft;
+    setDraft("");
+    await onReply(text);
+  }
+
   return (
     <View
       style={{
@@ -351,88 +385,131 @@ function Exchange({ message, scale }) {
         marginBottom: 12,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
-        <Text
+      {conversation.urgent ? (
+        <View
           style={{
-            fontSize: 13 * scale,
-            fontWeight: "700",
-            letterSpacing: 0.6,
-            textTransform: "uppercase",
-            color: T.faint,
+            alignSelf: "flex-start",
+            backgroundColor: T.badBg,
+            borderRadius: 999,
+            paddingHorizontal: 9,
+            paddingVertical: 3,
+            marginBottom: 12,
           }}
         >
-          You · {message.timeLabel}
-        </Text>
-        {message.urgent ? (
+          <Text style={{ fontSize: 11 * scale, fontWeight: "800", color: T.bad }}>
+            URGENT
+          </Text>
+        </View>
+      ) : null}
+
+      {conversation.turns.map((turn, i) => {
+        const fromDoctor = turn.from === "doctor";
+        return (
           <View
+            key={`${turn.sentAt}-${i}`}
             style={{
-              marginLeft: 8,
-              backgroundColor: T.badBg,
-              borderRadius: 999,
-              paddingHorizontal: 8,
-              paddingVertical: 2,
+              marginTop: i === 0 ? 0 : 14,
+              paddingTop: i === 0 ? 0 : 14,
+              borderTopWidth: i === 0 ? 0 : 1,
+              borderTopColor: T.hair,
             }}
           >
-            <Text
-              style={{ fontSize: 11 * scale, fontWeight: "700", color: T.bad }}
+            <View
+              style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}
             >
-              URGENT
+              <Ionicons
+                name={fromDoctor ? "medkit" : "person"}
+                size={17}
+                color={fromDoctor ? T.good : T.faint}
+              />
+              <Text
+                style={{
+                  marginLeft: 7,
+                  fontSize: 13 * scale,
+                  fontWeight: "700",
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  color: fromDoctor ? T.good : T.faint,
+                }}
+              >
+                {fromDoctor ? DOCTOR_NAME : "You"} · {turn.timeLabel}
+              </Text>
+            </View>
+            <Text
+              style={{
+                fontSize: 18 * scale,
+                lineHeight: 26 * scale,
+                color: T.ink,
+                paddingLeft: fromDoctor ? 24 : 0,
+              }}
+            >
+              {turn.text}
+            </Text>
+          </View>
+        );
+      })}
+
+      <View
+        style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: T.hair }}
+      >
+        {waiting ? (
+          <View
+            style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}
+          >
+            <Ionicons name="time-outline" size={17} color={T.faint} />
+            <Text style={{ marginLeft: 7, fontSize: 15 * scale, color: T.faint }}>
+              Waiting for a reply
             </Text>
           </View>
         ) : null}
-      </View>
 
-      <Text style={{ fontSize: 18 * scale, lineHeight: 26 * scale, color: T.ink }}>
-        {message.text}
-      </Text>
-
-      {message.reply ? (
-        <View
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder="Add to this conversation"
+          placeholderTextColor={T.faint}
+          multiline
+          textAlignVertical="top"
+          accessibilityLabel="Add to this conversation"
           style={{
-            marginTop: 14,
-            paddingTop: 14,
-            borderTopWidth: 1,
-            borderTopColor: T.hair,
+            minHeight: 64,
+            padding: 12,
+            fontSize: 17 * scale,
+            lineHeight: 24 * scale,
+            color: T.ink,
+            backgroundColor: T.bg,
+            borderWidth: 1,
+            borderColor: T.line,
+            borderRadius: 12,
           }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
-            <Ionicons name="medkit" size={18} color={T.good} />
-            <Text
-              style={{
-                marginLeft: 8,
-                fontSize: 13 * scale,
-                fontWeight: "700",
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-                color: T.good,
-              }}
-            >
-              {DOCTOR_NAME} · {message.reply.timeLabel}
-            </Text>
-          </View>
-          <Text
-            style={{ fontSize: 18 * scale, lineHeight: 26 * scale, color: T.ink }}
-          >
-            {message.reply.text}
-          </Text>
-        </View>
-      ) : (
-        <View
+        />
+        <Pressable
+          onPress={send}
+          disabled={!draft.trim()}
+          accessibilityRole="button"
+          accessibilityLabel="Send follow-up message"
           style={{
-            marginTop: 14,
-            paddingTop: 14,
-            borderTopWidth: 1,
-            borderTopColor: T.hair,
-            flexDirection: "row",
+            alignSelf: "flex-start",
+            minHeight: 52,
+            marginTop: 10,
+            paddingHorizontal: 20,
             alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 12,
+            backgroundColor: draft.trim() ? T.ink : T.raised,
           }}
         >
-          <Ionicons name="time-outline" size={18} color={T.faint} />
-          <Text style={{ marginLeft: 8, fontSize: 16 * scale, color: T.faint }}>
-            Waiting for a reply
+          <Text
+            style={{
+              fontSize: 16 * scale,
+              fontWeight: "700",
+              color: draft.trim() ? "#ffffff" : T.faint,
+            }}
+          >
+            Send
           </Text>
-        </View>
-      )}
+        </Pressable>
+      </View>
     </View>
   );
 }

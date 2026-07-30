@@ -2,8 +2,14 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { page } from "../../components/layout";
-import { T, sectionLabel } from "../../components/theme";
-import { getMessages, markRead, replyToMessage } from "../../data/messages";
+import { T } from "../../components/theme";
+import {
+  addTurn,
+  getConversations,
+  lastTurn,
+  markHandled,
+  needsDoctor,
+} from "../../data/messages";
 
 // The doctor's inbox. Urgent messages sort to the top (see data/messages.js),
 // because the ordering is the triage.
@@ -12,7 +18,7 @@ export default function Messages() {
   const [filter, setFilter] = useState("open");
 
   const refresh = useCallback(() => {
-    getMessages().then(setMessages);
+    getConversations().then(setMessages);
   }, []);
 
   useEffect(() => {
@@ -23,7 +29,7 @@ export default function Messages() {
     return () => clearInterval(timer);
   }, [refresh]);
 
-  const open = messages.filter((m) => !m.read);
+  const open = messages.filter(needsDoctor);
   const urgent = open.filter((m) => m.urgent);
   const shown = filter === "open" ? open : messages;
 
@@ -186,24 +192,24 @@ function Tab({ label, active, onPress }) {
 }
 
 function MessageCard({ message, onDone }) {
-  const unhandledUrgent = message.urgent && !message.read;
+  const waiting = needsDoctor(message);
+  const flagged = message.urgent && waiting;
+  const latest = lastTurn(message);
 
   return (
     <View
       style={{
         backgroundColor: T.surface,
         borderRadius: 16,
-        borderWidth: unhandledUrgent ? 2 : 1,
-        borderColor: unhandledUrgent ? T.badLine : T.line,
+        borderWidth: flagged ? 2 : 1,
+        borderColor: flagged ? T.badLine : T.line,
         marginBottom: 12,
         overflow: "hidden",
       }}
     >
       {/* A severity strip rather than a coloured card — the state reads at a
           glance without tinting the text behind it. */}
-      {unhandledUrgent ? (
-        <View style={{ height: 4, backgroundColor: T.bad }} />
-      ) : null}
+      {flagged ? <View style={{ height: 4, backgroundColor: T.bad }} /> : null}
 
       <View style={{ padding: 16 }}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -225,38 +231,55 @@ function MessageCard({ message, onDone }) {
               </Text>
             </View>
           ) : null}
-          <Text style={{ fontSize: 12, color: T.faint }}>{message.timeLabel}</Text>
+          <Text style={{ fontSize: 12, color: T.faint }}>{latest.timeLabel}</Text>
         </View>
 
-        <Text
-          style={{ fontSize: 15, lineHeight: 22, color: T.ink, marginTop: 10 }}
-        >
-          {message.text}
-        </Text>
+        {/* Every turn, oldest first */}
+        {message.turns.map((turn, i) => {
+          const mine = turn.from === "doctor";
+          return (
+            <View
+              key={`${turn.sentAt}-${i}`}
+              style={{
+                marginTop: 12,
+                paddingTop: i === 0 ? 0 : 12,
+                borderTopWidth: i === 0 ? 0 : 1,
+                borderTopColor: T.hair,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 11,
+                  fontWeight: "700",
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  color: mine ? T.good : T.faint,
+                  marginBottom: 4,
+                }}
+              >
+                {mine ? "You" : message.patientName.split(" ")[0]} · {turn.timeLabel}
+              </Text>
+              <Text
+                style={{
+                  fontSize: 15,
+                  lineHeight: 22,
+                  color: mine ? T.muted : T.ink,
+                  paddingLeft: mine ? 14 : 0,
+                }}
+              >
+                {turn.text}
+              </Text>
+            </View>
+          );
+        })}
 
-        {message.reply ? (
-          <View
-            style={{
-              marginTop: 14,
-              paddingTop: 12,
-              borderTopWidth: 1,
-              borderTopColor: T.hair,
-            }}
-          >
-            <Text style={sectionLabel(1)}>You replied · {message.reply.timeLabel}</Text>
-            <Text style={{ fontSize: 15, lineHeight: 22, color: T.muted }}>
-              {message.reply.text}
-            </Text>
-          </View>
-        ) : (
-          <ReplyBox messageId={message.id} onDone={onDone} />
-        )}
+        <ReplyBox messageId={message.id} onDone={onDone} />
 
-        {!message.read ? (
+        {waiting ? (
           <Pressable
-            onPress={() => markRead(message.id).then(onDone)}
+            onPress={() => markHandled(message.id).then(onDone)}
             accessibilityRole="button"
-            accessibilityLabel={`Mark ${message.patientName}'s message handled`}
+            accessibilityLabel={`Mark ${message.patientName}'s conversation handled`}
             style={{
               alignSelf: "flex-start",
               marginTop: 12,
@@ -283,7 +306,7 @@ function ReplyBox({ messageId, onDone }) {
   async function send() {
     if (!text.trim() || sending) return; // guard against a double tap
     setSending(true);
-    await replyToMessage(messageId, text);
+    await addTurn(messageId, "doctor", text);
     setText("");
     setSending(false);
     onDone();
