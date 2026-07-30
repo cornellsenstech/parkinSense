@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useContext, useEffect, useState } from "react";
 import { Image, Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import { READING_WIDTH, page } from "../components/layout";
+import { column, columns, page, useWide } from "../components/layout";
 import { DOCTOR_NAME } from "../data/patients";
 import { defaultProfile, loadProfile, saveProfile } from "../data/profile";
 import { RoleContext } from "../context/RoleContext";
@@ -13,6 +13,7 @@ import {
 
 export default function Profile() {
   const { role, user, setRole } = useContext(RoleContext);
+  const wide = useWide();
   const isDoctor = role === "doctor";
 
   const [profile, setProfile] = useState(() => defaultProfile(user));
@@ -77,12 +78,17 @@ export default function Profile() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={page(READING_WIDTH, 24)}
+      contentContainerStyle={page(undefined, 24)}
     >
       <Text className="text-5xl font-black text-gray-900 mb-6">Profile</Text>
 
-      {/* Photo */}
-      <View className="items-center mb-6">
+      <View style={columns(wide, 24)}>
+
+      {/* Photo — its own column on a wide screen */}
+      <View
+        className="items-center mb-6"
+        style={wide ? { width: 280 } : null}
+      >
         <Pressable
           onPress={pickPhoto}
           accessibilityRole="button"
@@ -115,6 +121,8 @@ export default function Profile() {
 
         <Text className="text-2xl font-bold text-gray-900 mt-4">{profile.name}</Text>
       </View>
+
+      <View style={column(wide)}>
 
       {/* Details */}
       <View className="bg-white rounded-3xl border border-gray-200 p-6 mb-5">
@@ -175,6 +183,9 @@ export default function Profile() {
       >
         <Text className="text-lg font-semibold text-gray-800">Switch portal</Text>
       </Pressable>
+
+      </View>
+      </View>
     </ScrollView>
   );
 }

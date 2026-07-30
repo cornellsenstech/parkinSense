@@ -1,7 +1,7 @@
 import { useContext, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Card from "../components/Card";
-import { READING_WIDTH, page } from "../components/layout";
+import { column, columns, page, useWide } from "../components/layout";
 import SensorStatus from "../components/SensorStatusCard";
 import StatusBadge from "../components/StatusBadge";
 import SymptomStepper from "../components/SymptomStepper";
@@ -29,6 +29,7 @@ function greetingFor(hour) {
 export default function Home() {
   const { user } = useContext(RoleContext);
   const { scale } = useContext(AccessibilityContext);
+  const wide = useWide();
   const patient = patients.find((p) => p.id === user) || patients[0];
   const firstName = firstNameOf(patient.name);
   const greeting = greetingFor(new Date().getHours());
@@ -41,7 +42,7 @@ export default function Home() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={page(READING_WIDTH, 24)}
+      contentContainerStyle={page(undefined, 24)}
     >
       {/* Greeting and device on one compact line each, rather than two big
           blocks — the level below is what deserves the space. */}
@@ -62,6 +63,11 @@ export default function Home() {
           batteryPct={patient.batteryPct}
         />
       </View>
+
+      {/* Two columns on a wide screen so the page fills the space without any
+          one card growing an over-long line. Stacks on a phone. */}
+      <View style={columns(wide, 24)}>
+      <View style={column(wide)}>
 
       {/* Current level */}
       <Card
@@ -85,6 +91,19 @@ export default function Home() {
         </Text>
       </Card>
 
+      {/* Trend */}
+      <Card
+        title="Today's trend"
+        subtitle="Midnight to now, in 24 steps"
+        speakText={`Today's trend. ${describeTrend(trend)}`}
+      >
+        <Text className="text-base text-gray-700 mb-4">{describeTrend(trend)}</Text>
+        <TodayTrend points={trend} />
+      </Card>
+
+      </View>
+      <View style={column(wide)}>
+
       {/* Symptom check-in */}
       <Card
         title="How are you feeling?"
@@ -104,15 +123,8 @@ export default function Home() {
         </Pressable>
       </Card>
 
-      {/* Trend */}
-      <Card
-        title="Today's trend"
-        subtitle="Midnight to now, in 24 steps"
-        speakText={`Today's trend. ${describeTrend(trend)}`}
-      >
-        <Text className="text-base text-gray-700 mb-4">{describeTrend(trend)}</Text>
-        <TodayTrend points={trend} />
-      </Card>
+      </View>
+      </View>
     </ScrollView>
   );
 }

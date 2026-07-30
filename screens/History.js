@@ -5,7 +5,7 @@ import LevelLineChart, {
   ChartLegend,
 } from "../components/LevelLineChart";
 import SymptomChart from "../components/SymptomChart";
-import { READING_WIDTH, page } from "../components/layout";
+import { page, useWide } from "../components/layout";
 import {
   RANGE_HIGH,
   RANGE_LOW,
@@ -20,6 +20,7 @@ export default function History() {
   const readings = getHistory(user);
   const symptoms = getSymptomLog(user);
 
+  const wide = useWide();
   const [view, setView] = useState("Concentration");
   const [selected, setSelected] = useState(readings[readings.length - 1]);
 
@@ -29,7 +30,7 @@ export default function History() {
   return (
     <ScrollView
       className="flex-1 bg-gray-50"
-      contentContainerStyle={page(READING_WIDTH)}
+      contentContainerStyle={page()}
     >
       <Text className="text-4xl font-bold text-gray-900">History</Text>
       <Text className="text-4xl font-black text-gray-900 mb-5">Overview</Text>
@@ -116,13 +117,23 @@ export default function History() {
                 <Text className="text-base font-semibold text-gray-700 mb-2 mt-1">
                   {day}
                 </Text>
-                {readings
-                  .filter((r) => r.day === day)
-                  .slice()
-                  .reverse()
-                  .map((reading) => (
-                    <ReadingRow key={reading.id} reading={reading} />
-                  ))}
+                {/* Two per row on a wide screen — 48 readings in a single
+                    column is a very long scroll. */}
+                <View
+                  style={
+                    wide
+                      ? { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" }
+                      : null
+                  }
+                >
+                  {readings
+                    .filter((r) => r.day === day)
+                    .slice()
+                    .reverse()
+                    .map((reading) => (
+                      <ReadingRow key={reading.id} reading={reading} wide={wide} />
+                    ))}
+                </View>
               </View>
             ))
         : symptoms
@@ -176,10 +187,13 @@ function Stat({ value, label, divider }) {
   );
 }
 
-function ReadingRow({ reading }) {
+function ReadingRow({ reading, wide }) {
   const tone = levelTone(reading.level);
   return (
-    <View className="bg-white rounded-2xl border border-gray-200 px-4 py-3 mb-2">
+    <View
+      className="bg-white rounded-2xl border border-gray-200 px-4 py-3 mb-2"
+      style={wide ? { width: "49%" } : null}
+    >
       <View className="flex-row items-start justify-between">
         <View className="flex-row items-end">
           <Text className="text-2xl font-bold text-gray-900">{reading.level}</Text>
