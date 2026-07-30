@@ -100,6 +100,31 @@ export default function Community() {
     setVisible(PAGE); // a new filter should start from the top
   }
 
+  const filtersActive =
+    category !== "all" || savedOnly || stepFreeOnly || nameQuery.trim() !== "";
+
+  function clearFilters() {
+    setCategory("all");
+    setSavedOnly(false);
+    setStepFreeOnly(false);
+    setNameQuery("");
+    setVisible(PAGE);
+  }
+
+  // Named so the empty state can explain exactly why nothing matched, rather
+  // than leaving the patient staring at a blank list.
+  function activeFilterNames() {
+    const names = [];
+    if (category !== "all") {
+      const match = CATEGORIES.find((c) => c.id === category);
+      if (match) names.push(match.label.toLowerCase());
+    }
+    if (savedOnly) names.push("saved only");
+    if (stepFreeOnly) names.push("no steps only");
+    if (nameQuery.trim()) names.push(`name contains "${nameQuery.trim()}"`);
+    return names;
+  }
+
   const items = useMemo(() => {
     // Anything with coordinates gets a distance and is dropped if it is too far
     // from where the patient is looking.
@@ -290,21 +315,47 @@ export default function Community() {
                 );
               })}
             </View>
-          </Group>
+            {/* The narrowing options live in the same group as the categories.
+                They combine with the category above, so keeping them in a
+                separate box made it look like they replaced it. */}
+            <View
+              style={{ height: 1, backgroundColor: C.hair, marginTop: 6, marginBottom: 14 }}
+            />
 
-          <Group scale={scale} label="Show only">
             <Check
               scale={scale}
-              label={`My saved list (${saved.length})`}
+              label={`Saved only (${saved.length})`}
               active={savedOnly}
               onPress={() => reset(setSavedOnly, !savedOnly)}
             />
             <Check
               scale={scale}
-              label="Places without steps"
+              label="No steps only"
               active={stepFreeOnly}
               onPress={() => reset(setStepFreeOnly, !stepFreeOnly)}
             />
+
+            {filtersActive ? (
+              <Pressable
+                onPress={clearFilters}
+                accessibilityRole="button"
+                accessibilityLabel="Clear all filters"
+                style={{
+                  minHeight: 52,
+                  marginTop: 4,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderRadius: 12,
+                  backgroundColor: C.raised,
+                }}
+              >
+                <Text
+                  style={{ fontSize: 16 * scale, fontWeight: "700", color: C.ink }}
+                >
+                  Clear filters
+                </Text>
+              </Pressable>
+            ) : null}
           </Group>
 
           <Group scale={scale} label="Search by name" last>
@@ -409,17 +460,59 @@ export default function Community() {
               <Ionicons name="search-outline" size={34} color={C.faint} />
               <Text
                 style={{
-                  fontSize: 18 * scale,
-                  lineHeight: 26 * scale,
-                  color: C.muted,
+                  fontSize: 19 * scale,
+                  lineHeight: 27 * scale,
+                  fontWeight: "700",
+                  color: C.ink,
                   marginTop: 12,
                   textAlign: "center",
                 }}
               >
-                {savedOnly
-                  ? "Your saved list is empty. Tap Save on any place to add it."
-                  : "Nothing matched. Try tapping Show all."}
+                Nothing matches all of these
               </Text>
+
+              {/* Name the filters that are on. An unexplained empty list reads
+                  as a broken app rather than a narrow search. */}
+              {activeFilterNames().length ? (
+                <Text
+                  style={{
+                    fontSize: 17 * scale,
+                    lineHeight: 25 * scale,
+                    color: C.muted,
+                    marginTop: 8,
+                    textAlign: "center",
+                  }}
+                >
+                  {activeFilterNames().join(" + ")}
+                </Text>
+              ) : null}
+
+              {filtersActive ? (
+                <Pressable
+                  onPress={clearFilters}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear all filters"
+                  style={{
+                    minHeight: 56,
+                    marginTop: 16,
+                    paddingHorizontal: 24,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 14,
+                    backgroundColor: C.ink,
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 17 * scale,
+                      fontWeight: "700",
+                      color: "#ffffff",
+                    }}
+                  >
+                    Clear filters
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 

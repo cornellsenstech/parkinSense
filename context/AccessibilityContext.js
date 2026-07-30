@@ -19,6 +19,7 @@ const DEFAULTS = { readAloud: true, textSize: "normal" };
 export const AccessibilityContext = createContext({
   ...DEFAULTS,
   scale: 1,
+  speakingId: null,
   setReadAloud: () => {},
   setTextSize: () => {},
   speak: () => {},
@@ -64,11 +65,28 @@ export function AccessibilityProvider({ children }) {
     setSettings((current) => ({ ...current, textSize: value }));
   }, []);
 
+  // Which text is currently being spoken, so the button that started it can
+  // show a stop control instead of offering to play again.
+  const [speakingId, setSpeakingId] = useState(null);
+
   // Speaking replaces whatever was already playing, so tapping two speakers in
   // a row never produces overlapping audio.
-  const speak = useCallback((text) => {
+  const speak = useCallback((text, id) => {
     Speech.stop();
-    Speech.speak(expandForSpeech(text), { rate: 0.9 });
+    setSpeakingId(id ?? text);
+    Speech.speak(expandForSpeech(text), {
+      rate: 0.9,
+      // Clear on every terminal outcome, or a button could stay stuck showing
+      // "stop" after the audio has finished.
+      onDone: () => setSpeakingId(null),
+      onStopped: () => setSpeakingId(null),
+      onError: () => setSpeakingId(null),
+    });
+  }, []);
+
+  const stop = useCallback(() => {
+    Speech.stop();
+    setSpeakingId(null);
   }, []);
 
   const scale = useMemo(
@@ -82,12 +100,13 @@ export function AccessibilityProvider({ children }) {
       readAloud: settings.readAloud,
       textSize: settings.textSize,
       scale,
+      speakingId,
       setReadAloud,
       setTextSize,
       speak,
-      stop: Speech.stop,
+      stop,
     }),
-    [settings, scale, setReadAloud, setTextSize, speak]
+    [settings, scale, speakingId, setReadAloud, setTextSize, speak, stop]
   );
 
   return (
