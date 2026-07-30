@@ -37,7 +37,7 @@ function buildThreadSpeech(thread) {
 }
 
 export default function Help() {
-  const { user } = useContext(RoleContext);
+  const { user, reporter } = useContext(RoleContext);
   const { scale } = useContext(AccessibilityContext);
   const wide = useWide();
   const patient = patients.find((p) => p.id === user) || patients[0];
@@ -66,6 +66,7 @@ export default function Help() {
       patientName: patient.name,
       text,
       urgent,
+      by: reporter,
     });
     setSent(ok ? "Sent to your care team" : "Could not send — please try again");
     setCustom("");
@@ -75,7 +76,7 @@ export default function Help() {
 
   // A follow-up inside an existing thread, rather than a new conversation.
   async function reply(conversationId, text) {
-    await addTurn(conversationId, "patient", text);
+    await addTurn(conversationId, "patient", text, reporter);
     refresh();
   }
 
@@ -317,7 +318,13 @@ export default function Help() {
                     color: custom.trim() ? "#ffffff" : T.faint,
                   }}
                 >
-                  {markUrgent ? "Send urgent message" : "Send message"}
+                  {reporter === "caregiver"
+                    ? markUrgent
+                      ? "Send urgent message as caregiver"
+                      : "Send as caregiver"
+                    : markUrgent
+                    ? "Send urgent message"
+                    : "Send message"}
                 </Text>
               </Pressable>
             </>
@@ -565,7 +572,13 @@ function Thread({ conversation, scale, onReply }) {
               style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}
             >
               <Ionicons
-                name={fromDoctor ? "medkit" : "person"}
+                name={
+                  fromDoctor
+                    ? "medkit"
+                    : turn.by === "caregiver"
+                    ? "people"
+                    : "person"
+                }
                 size={17}
                 color={fromDoctor ? T.good : T.faint}
               />
@@ -579,7 +592,12 @@ function Thread({ conversation, scale, onReply }) {
                   color: fromDoctor ? T.good : T.faint,
                 }}
               >
-                {fromDoctor ? DOCTOR_NAME : "You"} · {turn.timeLabel}
+                {fromDoctor
+                  ? DOCTOR_NAME
+                  : turn.by === "caregiver"
+                  ? "Caregiver"
+                  : "You"}{" "}
+                · {turn.timeLabel}
               </Text>
             </View>
             <Text

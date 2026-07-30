@@ -307,7 +307,14 @@ function MessageCard({ message, onDone }) {
                   marginBottom: 4,
                 }}
               >
-                {mine ? "You" : message.patientName.split(" ")[0]} · {turn.timeLabel}
+                {/* Naming the caregiver matters clinically: it is an observation
+                    rather than the patient's own account. */}
+                {mine
+                  ? "You"
+                  : turn.by === "caregiver"
+                  ? `Caregiver for ${message.patientName.split(" ")[0]}`
+                  : message.patientName.split(" ")[0]}{" "}
+                · {turn.timeLabel}
               </Text>
               <Text
                 style={{

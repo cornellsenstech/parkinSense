@@ -7,7 +7,13 @@ import LevelLineChart, {
 import SymptomHistoryChart from "../components/SymptomHistoryChart";
 import SymptomTable from "../components/SymptomTable";
 import { chronological, loadEntries } from "../data/symptomLog";
-import { doseProximity, loadMeals, proteinLabel } from "../data/mealLog";
+import {
+  PROTEIN_LEVELS,
+  doseProximity,
+  loadMeals,
+  proteinLabel,
+  setMealProtein,
+} from "../data/mealLog";
 import { SYMPTOMS, sleepLabel } from "../data/symptoms";
 import { Ionicons } from "@expo/vector-icons";
 import { page, useWide } from "../components/layout";
@@ -35,6 +41,11 @@ export default function History() {
 
   const wide = useWide();
   const { scale } = useContext(AccessibilityContext);
+
+  async function fillProtein(mealId, protein) {
+    await setMealProtein(user, mealId, protein);
+    setMeals(await loadMeals(user));
+  }
   const [view, setView] = useState("Concentration");
   const [selected, setSelected] = useState(readings[readings.length - 1]);
 
@@ -195,9 +206,17 @@ export default function History() {
                     className="text-gray-900 ml-2 flex-1"
                     style={{ fontSize: 17 * scale }}
                   >
-                    {meal.timeLabel} · {proteinLabel(meal.protein)}
+                    {meal.timeLabel}
+                    {meal.food ? ` · ${meal.food}` : ""}
+                  </Text>
+                  <Text
+                    className="text-gray-600"
+                    style={{ fontSize: 15 * scale }}
+                  >
+                    {proteinLabel(meal.protein)}
                   </Text>
                 </View>
+
                 {near?.flag ? (
                   <Text
                     style={{
@@ -208,6 +227,53 @@ export default function History() {
                   >
                     About {near.minutes} minutes from the {near.doseLabel} dose
                   </Text>
+                ) : null}
+
+                {/* Meals logged as "not sure" can be filled in here afterwards,
+                    by the patient or whoever is helping them. */}
+                {meal.protein === "unsure" ? (
+                  <View style={{ marginTop: 10 }}>
+                    <Text
+                      className="text-gray-600 mb-2"
+                      style={{ fontSize: 15 * scale }}
+                    >
+                      How much protein was in this?
+                    </Text>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+                      {PROTEIN_LEVELS.filter((p) => p.id !== "unsure").map(
+                        (level) => (
+                          <Pressable
+                            key={level.id}
+                            onPress={() => fillProtein(meal.id, level.id)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Set to ${level.label}`}
+                            style={{
+                              minHeight: 48,
+                              paddingHorizontal: 14,
+                              marginRight: 8,
+                              marginBottom: 8,
+                              alignItems: "center",
+                              justifyContent: "center",
+                              borderRadius: 10,
+                              backgroundColor: "#f1f5f9",
+                              borderWidth: 1,
+                              borderColor: "#cbd5e1",
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 15 * scale,
+                                fontWeight: "600",
+                                color: "#0f172a",
+                              }}
+                            >
+                              {level.label}
+                            </Text>
+                          </Pressable>
+                        )
+                      )}
+                    </View>
+                  </View>
                 ) : null}
               </View>
             );

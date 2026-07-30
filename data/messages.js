@@ -22,14 +22,26 @@ function clockLabel(date) {
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-function makeTurn(from, text) {
+// `from` is which side of the conversation spoke. `by` records who actually
+// typed it, so a caregiver writing on the patient's behalf is visible to the
+// clinician rather than being passed off as the patient's own words.
+function makeTurn(from, text, by) {
   const now = new Date();
   return {
     from, // "patient" | "doctor"
+    by: from === "patient" ? (by === "caregiver" ? "caregiver" : "patient") : null,
     text: text.trim(),
     sentAt: now.getTime(),
     timeLabel: clockLabel(now),
   };
+}
+
+// Who wrote a turn, in words. Used by both portals so they cannot disagree.
+export function turnAuthor(turn, patientFirstName) {
+  if (turn.from === "doctor") return "doctor";
+  return turn.by === "caregiver"
+    ? `caregiver${patientFirstName ? ` for ${patientFirstName}` : ""}`
+    : patientFirstName || "patient";
 }
 
 // Conversations saved before threads existed had a single `text` plus an
@@ -109,7 +121,13 @@ export async function getConversationsFor(patientId) {
   return all.filter((c) => c.patientId === patientId);
 }
 
-export async function startConversation({ patientId, patientName, text, urgent }) {
+export async function startConversation({
+  patientId,
+  patientName,
+  text,
+  urgent,
+  by,
+}) {
   if (!text.trim()) return false;
   const list = await readAll();
   const conversation = {
@@ -118,7 +136,7 @@ export async function startConversation({ patientId, patientName, text, urgent }
     patientName,
     urgent: Boolean(urgent),
     closed: false,
-    turns: [makeTurn("patient", text)],
+    turns: [makeTurn("patient", text, by)],
   };
   return writeAll([conversation, ...list]);
 }
@@ -126,14 +144,16 @@ export async function startConversation({ patientId, patientName, text, urgent }
 // Either side can keep adding turns until the doctor closes the thread. A
 // closed conversation is read-only, so the record of what was said cannot be
 // changed after the clinician signed it off.
-export async function addTurn(conversationId, from, text) {
+export async function addTurn(conversationId, from, text, by) {
   if (!text.trim()) return false;
   const list = await readAll();
   const target = list.find((c) => c.id === conversationId);
   if (!target || target.closed) return false;
 
   const next = list.map((c) =>
-    c.id === conversationId ? { ...c, turns: [...c.turns, makeTurn(from, text)] } : c
+    c.id === conversationId
+      ? { ...c, turns: [...c.turns, makeTurn(from, text, by)] }
+      : c
   );
   return writeAll(next);
 }
