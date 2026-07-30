@@ -6,11 +6,11 @@ import {
   ScrollView,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 import EventMap from "../components/EventMap";
-import { READING_WIDTH, WIDE_WIDTH, page } from "../components/layout";
+import { page, useWide } from "../components/layout";
+import { T } from "../components/theme";
 import SpeakButton from "../components/SpeakButton";
 import { EVENTS, LOCAL_RADIUS_MILES, ONLINE_EVENTS } from "../data/events";
 import { fetchNearbyPlaces, geocode, milesBetween } from "../data/places";
@@ -21,22 +21,8 @@ import { RoleContext } from "../context/RoleContext";
 
 const HOME = { lat: 42.4396, lon: -76.4969, label: "Ithaca, NY" };
 
-// One place for the palette, so the screen stays visually consistent. Kept
-// high-contrast on purpose — elegance here must not cost legibility.
-const C = {
-  ink: "#0f172a",
-  muted: "#475569",
-  faint: "#64748b",
-  line: "#cbd5e1",
-  hair: "#e2e8f0",
-  surface: "#ffffff",
-  good: "#166534",
-  goodBg: "#dcfce7",
-  warn: "#9a3412",
-  warnBg: "#ffedd5",
-  savedInk: "#b45309",
-  savedBg: "#fef3c7",
-};
+// Shared palette, so this screen cannot drift from Help and Messages.
+const C = T;
 
 // Browsing by tapping is easier than typing, which matters when a tremor makes
 // a keyboard hard to use.
@@ -56,8 +42,7 @@ export default function Community() {
 
   // On a wide screen the controls sit in a sidebar beside the results. On a
   // phone there is no room, so everything stacks.
-  const { width } = useWindowDimensions();
-  const wide = width >= 900;
+  const wide = useWide();
 
   const [center, setCenter] = useState(HOME);
   const [placeQuery, setPlaceQuery] = useState("");
@@ -157,7 +142,7 @@ export default function Community() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: "#f8fafc" }}
-      contentContainerStyle={page(wide ? WIDE_WIDTH : READING_WIDTH, wide ? 28 : 20)}
+      contentContainerStyle={page(undefined, wide ? 28 : 20)}
     >
       {/* Masthead */}
       <View style={{ flexDirection: "row", alignItems: "flex-start" }}>

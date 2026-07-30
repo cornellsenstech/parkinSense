@@ -1,18 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
-import Card from "../components/Card";
-import { READING_WIDTH, page } from "../components/layout";
+import SpeakButton from "../components/SpeakButton";
+import { column, columns, page, useWide } from "../components/layout";
+import { T, sectionLabel } from "../components/theme";
 import { QUICK_MESSAGES, getMessagesFor, sendMessage } from "../data/messages";
 import { DOCTOR_NAME, patients } from "../data/patients";
+import { AccessibilityContext } from "../context/AccessibilityContext";
 import { RoleContext } from "../context/RoleContext";
 
-// The patient's way to reach their care team. Everything here is sized for a
-// bad tremor episode — the worst possible moment for fine motor control — so
-// the common messages are one large tap, with typing as the fallback.
 // Reads the whole exchange in order, so a patient who cannot read the screen
 // can still hear whether their doctor has answered.
 function buildThreadSpeech(thread) {
+  if (!thread.length) return "You have not sent any messages yet.";
   return thread
     .map((m) =>
       m.reply
@@ -24,6 +24,8 @@ function buildThreadSpeech(thread) {
 
 export default function Help() {
   const { user } = useContext(RoleContext);
+  const { scale } = useContext(AccessibilityContext);
+  const wide = useWide();
   const patient = patients.find((p) => p.id === user) || patients[0];
 
   const [custom, setCustom] = useState("");
@@ -49,132 +51,388 @@ export default function Help() {
       text: text.trim(),
       urgent,
     });
-    setSent(ok ? "Sent to your care team" : "Could not send — try again");
+    setSent(ok ? "Sent to your care team" : "Could not send — please try again");
     setCustom("");
     refresh();
   }
 
+  const urgent = QUICK_MESSAGES.filter((m) => m.urgent);
+  const routine = QUICK_MESSAGES.filter((m) => !m.urgent);
+  const awaiting = thread.filter((m) => !m.reply).length;
+
   return (
     <ScrollView
-      className="flex-1 bg-gray-50"
-      contentContainerStyle={page(READING_WIDTH, 24)}
+      style={{ flex: 1, backgroundColor: T.bg }}
+      contentContainerStyle={page(undefined, wide ? 28 : 20)}
     >
-      <Text className="text-5xl font-black text-gray-900 mb-1">Get help</Text>
-      <Text className="text-lg text-gray-600 mb-6">
-        Tap a message to send it to your care team
-      </Text>
+      {/* Masthead */}
+      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              fontSize: 38 * scale,
+              lineHeight: 44 * scale,
+              fontWeight: "800",
+              letterSpacing: -0.5,
+              color: T.ink,
+            }}
+          >
+            Get help
+          </Text>
+          <Text
+            style={{
+              fontSize: 18 * scale,
+              lineHeight: 26 * scale,
+              color: T.muted,
+              marginTop: 6,
+              maxWidth: 520,
+            }}
+          >
+            Tap a message to send it to your care team. They usually reply the same
+            day.
+          </Text>
+        </View>
+        <SpeakButton
+          text={`Get help. Tap a message to send it to your care team. ${buildThreadSpeech(
+            thread
+          )}`}
+        />
+      </View>
+
+      {/* Emergency services sit above everything, and are never a button the
+          app can press on someone's behalf. */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: T.badBg,
+          borderWidth: 1,
+          borderColor: T.badLine,
+          borderRadius: 14,
+          padding: 14,
+          marginTop: 18,
+        }}
+      >
+        <Ionicons name="call" size={22} color={T.bad} />
+        <Text
+          style={{
+            marginLeft: 10,
+            flex: 1,
+            fontSize: 17 * scale,
+            lineHeight: 24 * scale,
+            fontWeight: "600",
+            color: T.bad,
+          }}
+        >
+          In a life-threatening emergency, call 911.
+        </Text>
+      </View>
 
       {sent ? (
-        <View className="flex-row items-center bg-green-100 border border-green-300 rounded-2xl p-4 mb-5">
-          <Ionicons name="checkmark-circle" size={26} color="#166534" />
-          <Text className="text-lg font-semibold ml-2" style={{ color: "#166534" }}>
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: T.goodBg,
+            borderRadius: 14,
+            padding: 14,
+            marginTop: 12,
+          }}
+        >
+          <Ionicons name="checkmark-circle" size={22} color={T.good} />
+          <Text
+            style={{
+              marginLeft: 10,
+              fontSize: 17 * scale,
+              fontWeight: "700",
+              color: T.good,
+            }}
+          >
             {sent}
           </Text>
         </View>
       ) : null}
 
-      {/* Emergency first and largest — it is the reason this screen exists. */}
-      {QUICK_MESSAGES.filter((m) => m.urgent).map((message) => (
-        <Pressable
-          key={message.id}
-          onPress={() => send(message.text, true)}
-          accessibilityRole="button"
-          accessibilityLabel={`Send urgent message: ${message.text}`}
-          className="bg-red-600 rounded-3xl p-6 mb-4 flex-row items-center"
-          style={{ minHeight: 96 }}
-        >
-          <Ionicons name="alert-circle" size={40} color="#ffffff" />
-          <Text className="text-white text-2xl font-bold ml-3 flex-1">
-            {message.text}
-          </Text>
-        </Pressable>
-      ))}
+      <View
+        style={{ height: 1, backgroundColor: T.hair, marginTop: 22, marginBottom: 22 }}
+      />
 
-      {QUICK_MESSAGES.filter((m) => !m.urgent).map((message) => (
-        <Pressable
-          key={message.id}
-          onPress={() => send(message.text, false)}
-          accessibilityRole="button"
-          accessibilityLabel={`Send message: ${message.text}`}
-          className="bg-white border-2 border-gray-300 rounded-3xl p-5 mb-4 flex-row items-center"
-          style={{ minHeight: 80 }}
-        >
-          <Ionicons name="chatbubble-ellipses" size={30} color="#111827" />
-          <Text className="text-gray-900 text-xl font-semibold ml-3 flex-1">
-            {message.text}
-          </Text>
-        </Pressable>
-      ))}
-
-      <Card title="Say something else">
-        <TextInput
-          value={custom}
-          onChangeText={setCustom}
-          placeholder="Type a message for your care team"
-          placeholderTextColor="#9ca3af"
-          multiline
-          textAlignVertical="top"
-          accessibilityLabel="Your message"
-          className="border-2 border-gray-300 rounded-2xl p-4 text-lg text-gray-900 bg-white mb-4"
-          style={{ minHeight: 100 }}
-        />
-        <Pressable
-          onPress={() => send(custom, false)}
-          accessibilityRole="button"
-          accessibilityLabel="Send message"
-          className="bg-black rounded-2xl items-center justify-center"
-          style={{ minHeight: 56 }}
-        >
-          <Text className="text-white text-lg font-semibold">Send message</Text>
-        </Pressable>
-      </Card>
-
-      {thread.length ? (
-        <Card
-          title="Your messages"
-          speakText={buildThreadSpeech(thread)}
-        >
-          {thread.map((message) => (
-            <View key={message.id} className="mb-4">
-              {/* What the patient sent */}
-              <View className="bg-gray-100 rounded-2xl p-4">
-                <Text className="text-lg text-gray-900">{message.text}</Text>
-                <Text className="text-sm text-gray-500 mt-1">
-                  You • {message.timeLabel}
-                  {message.urgent ? " • urgent" : ""}
-                </Text>
-              </View>
-
-              {/* The reply, if the care team has answered */}
-              {message.reply ? (
-                <View className="bg-green-50 border border-green-200 rounded-2xl p-4 mt-2">
-                  <View className="flex-row items-center mb-1">
-                    <Ionicons name="medkit" size={20} color="#166534" />
-                    <Text
-                      className="text-base font-semibold ml-2"
-                      style={{ color: "#166534" }}
-                    >
-                      {DOCTOR_NAME} replied
-                    </Text>
-                  </View>
-                  <Text className="text-lg text-gray-900">{message.reply.text}</Text>
-                  <Text className="text-sm text-gray-500 mt-1">
-                    {message.reply.timeLabel}
-                  </Text>
-                </View>
-              ) : (
-                <Text className="text-base text-gray-500 mt-2">
-                  Waiting for a reply…
-                </Text>
-              )}
-            </View>
+      <View style={columns(wide, 28)}>
+        {/* ---------------- Send something ---------------- */}
+        <View style={column(wide)}>
+          <Text style={sectionLabel(scale)}>Urgent</Text>
+          {urgent.map((message) => (
+            <QuickButton
+              key={message.id}
+              scale={scale}
+              icon="alert-circle"
+              label={message.text}
+              tone="urgent"
+              onPress={() => send(message.text, true)}
+            />
           ))}
-        </Card>
-      ) : null}
 
-      <Text className="text-base text-gray-600 text-center">
-        In a life-threatening emergency, call your local emergency number.
-      </Text>
+          <Text style={{ ...sectionLabel(scale), marginTop: 20 }}>
+            Something else
+          </Text>
+          {routine.map((message) => (
+            <QuickButton
+              key={message.id}
+              scale={scale}
+              icon="chatbubble-ellipses"
+              label={message.text}
+              tone="calm"
+              onPress={() => send(message.text, false)}
+            />
+          ))}
+
+          <Text style={{ ...sectionLabel(scale), marginTop: 20 }}>
+            Write your own
+          </Text>
+          <TextInput
+            value={custom}
+            onChangeText={setCustom}
+            placeholder="Type a message for your care team"
+            placeholderTextColor={T.faint}
+            multiline
+            textAlignVertical="top"
+            accessibilityLabel="Your message"
+            style={{
+              minHeight: 110,
+              padding: 14,
+              fontSize: 18 * scale,
+              lineHeight: 25 * scale,
+              color: T.ink,
+              backgroundColor: T.surface,
+              borderWidth: 2,
+              borderColor: T.line,
+              borderRadius: 16,
+            }}
+          />
+          <Pressable
+            onPress={() => send(custom, false)}
+            disabled={!custom.trim()}
+            accessibilityRole="button"
+            accessibilityLabel="Send message"
+            style={{
+              minHeight: 60,
+              marginTop: 10,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 16,
+              backgroundColor: custom.trim() ? T.ink : T.raised,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 18 * scale,
+                fontWeight: "700",
+                color: custom.trim() ? "#ffffff" : T.faint,
+              }}
+            >
+              Send message
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* ---------------- Conversation ---------------- */}
+        <View style={column(wide)}>
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "baseline",
+              marginTop: wide ? 0 : 28,
+            }}
+          >
+            <Text style={sectionLabel(scale)}>Your messages</Text>
+            {awaiting ? (
+              <Text
+                style={{
+                  marginLeft: 8,
+                  fontSize: 13 * scale,
+                  fontWeight: "700",
+                  color: T.faint,
+                }}
+              >
+                · {awaiting} awaiting a reply
+              </Text>
+            ) : null}
+          </View>
+
+          {thread.length === 0 ? (
+            <View
+              style={{
+                backgroundColor: T.surface,
+                borderWidth: 1,
+                borderColor: T.line,
+                borderRadius: 20,
+                padding: 28,
+                alignItems: "center",
+              }}
+            >
+              <Ionicons name="mail-outline" size={32} color={T.faint} />
+              <Text
+                style={{
+                  marginTop: 12,
+                  fontSize: 17 * scale,
+                  lineHeight: 25 * scale,
+                  color: T.muted,
+                  textAlign: "center",
+                }}
+              >
+                Nothing sent yet. Anything you send appears here with the reply.
+              </Text>
+            </View>
+          ) : null}
+
+          {thread.map((message) => (
+            <Exchange key={message.id} message={message} scale={scale} />
+          ))}
+        </View>
+      </View>
     </ScrollView>
+  );
+}
+
+// Urgent options are tinted and icon-led so they read as different in kind,
+// not merely a different colour of the same thing.
+function QuickButton({ icon, label, tone, onPress, scale }) {
+  const isUrgent = tone === "urgent";
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={isUrgent ? `Send urgent message: ${label}` : `Send message: ${label}`}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        minHeight: 76,
+        paddingHorizontal: 16,
+        marginBottom: 10,
+        borderRadius: 16,
+        backgroundColor: isUrgent ? T.badBg : T.surface,
+        borderWidth: isUrgent ? 2 : 1,
+        borderColor: isUrgent ? T.badLine : T.line,
+      }}
+    >
+      <Ionicons name={icon} size={26} color={isUrgent ? T.bad : T.muted} />
+      <Text
+        style={{
+          marginLeft: 12,
+          flex: 1,
+          fontSize: 18 * scale,
+          lineHeight: 25 * scale,
+          fontWeight: isUrgent ? "700" : "600",
+          color: isUrgent ? T.bad : T.ink,
+        }}
+      >
+        {label}
+      </Text>
+      <Ionicons
+        name="chevron-forward"
+        size={20}
+        color={isUrgent ? T.bad : T.faint}
+      />
+    </Pressable>
+  );
+}
+
+// One sent message and its reply, presented as a pair so it reads as a
+// conversation rather than two separate records.
+function Exchange({ message, scale }) {
+  return (
+    <View
+      style={{
+        backgroundColor: T.surface,
+        borderWidth: 1,
+        borderColor: T.line,
+        borderRadius: 20,
+        padding: 18,
+        marginBottom: 12,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+        <Text
+          style={{
+            fontSize: 13 * scale,
+            fontWeight: "700",
+            letterSpacing: 0.6,
+            textTransform: "uppercase",
+            color: T.faint,
+          }}
+        >
+          You · {message.timeLabel}
+        </Text>
+        {message.urgent ? (
+          <View
+            style={{
+              marginLeft: 8,
+              backgroundColor: T.badBg,
+              borderRadius: 999,
+              paddingHorizontal: 8,
+              paddingVertical: 2,
+            }}
+          >
+            <Text
+              style={{ fontSize: 11 * scale, fontWeight: "700", color: T.bad }}
+            >
+              URGENT
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <Text style={{ fontSize: 18 * scale, lineHeight: 26 * scale, color: T.ink }}>
+        {message.text}
+      </Text>
+
+      {message.reply ? (
+        <View
+          style={{
+            marginTop: 14,
+            paddingTop: 14,
+            borderTopWidth: 1,
+            borderTopColor: T.hair,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 6 }}>
+            <Ionicons name="medkit" size={18} color={T.good} />
+            <Text
+              style={{
+                marginLeft: 8,
+                fontSize: 13 * scale,
+                fontWeight: "700",
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                color: T.good,
+              }}
+            >
+              {DOCTOR_NAME} · {message.reply.timeLabel}
+            </Text>
+          </View>
+          <Text
+            style={{ fontSize: 18 * scale, lineHeight: 26 * scale, color: T.ink }}
+          >
+            {message.reply.text}
+          </Text>
+        </View>
+      ) : (
+        <View
+          style={{
+            marginTop: 14,
+            paddingTop: 14,
+            borderTopWidth: 1,
+            borderTopColor: T.hair,
+            flexDirection: "row",
+            alignItems: "center",
+          }}
+        >
+          <Ionicons name="time-outline" size={18} color={T.faint} />
+          <Text style={{ marginLeft: 8, fontSize: 16 * scale, color: T.faint }}>
+            Waiting for a reply
+          </Text>
+        </View>
+      )}
+    </View>
   );
 }
