@@ -78,9 +78,36 @@ export default function PatientDetail({ patient, onBack }) {
       className="flex-1 bg-gray-50"
       contentContainerStyle={page(WIDE_WIDTH)}
     >
-      <Pressable onPress={onBack} className="flex-row items-center self-start mb-3">
-        <Ionicons name="chevron-back" size={18} color="#374151" />
-        <Text className="text-sm font-medium text-gray-700 ml-1">Back to patients</Text>
+      {/* A proper button, not a small text link — this is the only way out of a
+          patient record, and it has to be obvious. */}
+      <Pressable
+        onPress={onBack}
+        accessibilityRole="button"
+        accessibilityLabel="Back to all patients"
+        style={{
+          alignSelf: "flex-start",
+          flexDirection: "row",
+          alignItems: "center",
+          minHeight: 44,
+          paddingHorizontal: 14,
+          marginBottom: 16,
+          borderRadius: 10,
+          backgroundColor: "#ffffff",
+          borderWidth: 1,
+          borderColor: "#cbd5e1",
+        }}
+      >
+        <Ionicons name="arrow-back" size={18} color="#0f172a" />
+        <Text
+          style={{
+            marginLeft: 8,
+            fontSize: 14,
+            fontWeight: "700",
+            color: "#0f172a",
+          }}
+        >
+          All patients
+        </Text>
       </Pressable>
 
       <Text className="text-3xl font-bold text-gray-900">{patient.name}</Text>

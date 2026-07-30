@@ -48,7 +48,7 @@ function migrate(entry) {
     patientId: entry.patientId,
     patientName: entry.patientName,
     urgent: Boolean(entry.urgent),
-    handled: Boolean(entry.read),
+    closed: Boolean(entry.read || entry.handled),
     turns,
   };
 }
@@ -57,9 +57,13 @@ export function lastTurn(conversation) {
   return conversation.turns[conversation.turns.length - 1];
 }
 
-// The doctor's cue: the patient spoke last and nobody has closed it off.
+export function isOpen(conversation) {
+  return !conversation.closed;
+}
+
+// The doctor's cue: the patient spoke last and the thread is still open.
 export function needsDoctor(conversation) {
-  return !conversation.handled && lastTurn(conversation).from === "patient";
+  return isOpen(conversation) && lastTurn(conversation).from === "patient";
 }
 
 async function readAll() {
@@ -109,33 +113,39 @@ export async function startConversation({ patientId, patientName, text, urgent }
     patientId,
     patientName,
     urgent: Boolean(urgent),
-    handled: false,
+    closed: false,
     turns: [makeTurn("patient", text)],
   };
   return writeAll([conversation, ...list]);
 }
 
-// Adding a turn reopens the thread: a patient replying to a closed
-// conversation should put it back in front of the doctor.
+// Either side can keep adding turns until the doctor closes the thread. A
+// closed conversation is read-only, so the record of what was said cannot be
+// changed after the clinician signed it off.
 export async function addTurn(conversationId, from, text) {
   if (!text.trim()) return false;
   const list = await readAll();
+  const target = list.find((c) => c.id === conversationId);
+  if (!target || target.closed) return false;
+
   const next = list.map((c) =>
-    c.id === conversationId
-      ? {
-          ...c,
-          turns: [...c.turns, makeTurn(from, text)],
-          handled: from === "doctor" ? c.handled : false,
-        }
-      : c
+    c.id === conversationId ? { ...c, turns: [...c.turns, makeTurn(from, text)] } : c
   );
   return writeAll(next);
 }
 
-export async function markHandled(conversationId) {
+// Only the doctor closes a conversation. Once closed the patient starts a new
+// one rather than reopening this one.
+export async function closeConversation(conversationId) {
   const list = await readAll();
   const next = list.map((c) =>
-    c.id === conversationId ? { ...c, handled: true } : c
+    c.id === conversationId ? { ...c, closed: true } : c
   );
   return writeAll(next);
+}
+
+// A patient should be adding to their live thread rather than opening a second
+// one alongside it.
+export function findOpen(conversations) {
+  return conversations.find(isOpen) || null;
 }

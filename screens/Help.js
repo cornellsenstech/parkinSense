@@ -7,7 +7,9 @@ import { T, sectionLabel } from "../components/theme";
 import {
   QUICK_MESSAGES,
   addTurn,
+  findOpen,
   getConversationsFor,
+  isOpen,
   lastTurn,
   startConversation,
 } from "../data/messages";
@@ -76,7 +78,13 @@ export default function Help() {
 
   const urgent = QUICK_MESSAGES.filter((m) => m.urgent);
   const routine = QUICK_MESSAGES.filter((m) => !m.urgent);
-  const awaiting = thread.filter((c) => lastTurn(c).from === "patient").length;
+  const awaiting = thread.filter(
+    (c) => isOpen(c) && lastTurn(c).from === "patient"
+  ).length;
+
+  // While a conversation is open, a routine message belongs in it rather than
+  // in a second thread the doctor would have to reconcile.
+  const open = findOpen(thread);
 
   return (
     <ScrollView
@@ -106,12 +114,12 @@ export default function Help() {
               maxWidth: 520,
             }}
           >
-            Tap a message to send it to your care team. They usually reply the same
-            day.
+            For urgent problems only. Tap a message to send it straight to your care
+            team.
           </Text>
         </View>
         <SpeakButton
-          text={`Get help. Tap a message to send it to your care team. ${buildThreadSpeech(
+          text={`Get help. For urgent problems only. In a life-threatening emergency, call 911. ${buildThreadSpeech(
             thread
           )}`}
         />
@@ -131,19 +139,30 @@ export default function Help() {
           marginTop: 18,
         }}
       >
-        <Ionicons name="call" size={22} color={T.bad} />
-        <Text
-          style={{
-            marginLeft: 10,
-            flex: 1,
-            fontSize: 17 * scale,
-            lineHeight: 24 * scale,
-            fontWeight: "600",
-            color: T.bad,
-          }}
-        >
-          In a life-threatening emergency, call 911.
-        </Text>
+        <Ionicons name="call" size={26} color={T.bad} />
+        <View style={{ marginLeft: 12, flex: 1 }}>
+          <Text
+            style={{
+              fontSize: 19 * scale,
+              lineHeight: 26 * scale,
+              fontWeight: "800",
+              color: T.bad,
+            }}
+          >
+            In a life-threatening emergency, call 911
+          </Text>
+          <Text
+            style={{
+              fontSize: 16 * scale,
+              lineHeight: 23 * scale,
+              color: T.bad,
+              marginTop: 3,
+            }}
+          >
+            This page is not monitored around the clock. Do not wait for a reply if
+            you are in danger.
+          </Text>
+        </View>
       </View>
 
       {sent ? (
@@ -190,23 +209,53 @@ export default function Help() {
             />
           ))}
 
-          <Text style={{ ...sectionLabel(scale), marginTop: 20 }}>
-            Something else
+          <Text style={{ ...sectionLabel(scale), marginTop: 22 }}>
+            Not urgent, but needs attention
           </Text>
-          {routine.map((message) => (
-            <QuickButton
-              key={message.id}
-              scale={scale}
-              icon="chatbubble-ellipses"
-              label={message.text}
-              tone="calm"
-              onPress={() => send(message.text, false)}
-            />
-          ))}
 
-          <Text style={{ ...sectionLabel(scale), marginTop: 20 }}>
-            Write your own
-          </Text>
+          {open ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                backgroundColor: T.surface,
+                borderWidth: 1,
+                borderColor: T.line,
+                borderRadius: 16,
+                padding: 16,
+              }}
+            >
+              <Ionicons name="chatbubbles" size={22} color={T.muted} />
+              <Text
+                style={{
+                  marginLeft: 10,
+                  flex: 1,
+                  fontSize: 17 * scale,
+                  lineHeight: 24 * scale,
+                  color: T.muted,
+                }}
+              >
+                You already have a conversation open. Add to it on the right — your
+                care team will see it there. You can start a new one once they close
+                it.
+              </Text>
+            </View>
+          ) : (
+            <>
+              {routine.map((message) => (
+                <QuickButton
+                  key={message.id}
+                  scale={scale}
+                  icon="chatbubble-ellipses"
+                  label={message.text}
+                  tone="calm"
+                  onPress={() => send(message.text, false)}
+                />
+              ))}
+
+              <Text style={{ ...sectionLabel(scale), marginTop: 20 }}>
+                Write your own
+              </Text>
           <TextInput
             value={custom}
             onChangeText={setCustom}
@@ -250,7 +299,9 @@ export default function Help() {
             >
               Send message
             </Text>
-          </Pressable>
+              </Pressable>
+            </>
+          )}
         </View>
 
         {/* ---------------- Conversation ---------------- */}
@@ -365,7 +416,8 @@ function QuickButton({ icon, label, tone, onPress, scale }) {
 // glance without relying on colour alone.
 function Thread({ conversation, scale, onReply }) {
   const [draft, setDraft] = useState("");
-  const waiting = lastTurn(conversation).from === "patient";
+  const closed = !isOpen(conversation);
+  const waiting = !closed && lastTurn(conversation).from === "patient";
 
   async function send() {
     if (!draft.trim()) return;
@@ -452,6 +504,16 @@ function Thread({ conversation, scale, onReply }) {
       <View
         style={{ marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: T.hair }}
       >
+        {/* A closed conversation is a finished record, so it takes no more turns */}
+        {closed ? (
+          <View style={{ flexDirection: "row", alignItems: "center" }}>
+            <Ionicons name="lock-closed" size={17} color={T.faint} />
+            <Text style={{ marginLeft: 7, fontSize: 15 * scale, color: T.faint }}>
+              Closed by your care team. Start a new message if you need them again.
+            </Text>
+          </View>
+        ) : null}
+
         {waiting ? (
           <View
             style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}
@@ -463,6 +525,8 @@ function Thread({ conversation, scale, onReply }) {
           </View>
         ) : null}
 
+        {closed ? null : (
+          <>
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -509,6 +573,8 @@ function Thread({ conversation, scale, onReply }) {
             Send
           </Text>
         </Pressable>
+          </>
+        )}
       </View>
     </View>
   );

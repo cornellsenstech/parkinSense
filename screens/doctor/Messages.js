@@ -5,9 +5,10 @@ import { page } from "../../components/layout";
 import { T } from "../../components/theme";
 import {
   addTurn,
+  closeConversation,
   getConversations,
+  isOpen,
   lastTurn,
-  markHandled,
   needsDoctor,
 } from "../../data/messages";
 
@@ -192,8 +193,8 @@ function Tab({ label, active, onPress }) {
 }
 
 function MessageCard({ message, onDone }) {
-  const waiting = needsDoctor(message);
-  const flagged = message.urgent && waiting;
+  const open = isOpen(message);
+  const flagged = message.urgent && needsDoctor(message);
   const latest = lastTurn(message);
 
   return (
@@ -273,27 +274,57 @@ function MessageCard({ message, onDone }) {
           );
         })}
 
-        <ReplyBox messageId={message.id} onDone={onDone} />
+        {open ? (
+          <>
+            <ReplyBox messageId={message.id} onDone={onDone} />
 
-        {waiting ? (
-          <Pressable
-            onPress={() => markHandled(message.id).then(onDone)}
-            accessibilityRole="button"
-            accessibilityLabel={`Mark ${message.patientName}'s conversation handled`}
+            {/* Closing ends the thread. The patient can then start a new one,
+                which keeps each episode of care as its own record. */}
+            <Pressable
+              onPress={() => closeConversation(message.id).then(onDone)}
+              accessibilityRole="button"
+              accessibilityLabel={`Close conversation with ${message.patientName}`}
+              style={{
+                alignSelf: "flex-start",
+                flexDirection: "row",
+                alignItems: "center",
+                marginTop: 12,
+                paddingHorizontal: 12,
+                paddingVertical: 8,
+                borderRadius: 10,
+                backgroundColor: T.raised,
+              }}
+            >
+              <Ionicons name="lock-closed-outline" size={14} color={T.muted} />
+              <Text
+                style={{
+                  marginLeft: 6,
+                  fontSize: 13,
+                  fontWeight: "600",
+                  color: T.muted,
+                }}
+              >
+                Close conversation
+              </Text>
+            </Pressable>
+          </>
+        ) : (
+          <View
             style={{
-              alignSelf: "flex-start",
-              marginTop: 12,
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 10,
-              backgroundColor: T.raised,
+              flexDirection: "row",
+              alignItems: "center",
+              marginTop: 14,
+              paddingTop: 12,
+              borderTopWidth: 1,
+              borderTopColor: T.hair,
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "600", color: T.muted }}>
-              Mark handled without replying
+            <Ionicons name="lock-closed" size={14} color={T.faint} />
+            <Text style={{ marginLeft: 6, fontSize: 13, color: T.faint }}>
+              Closed — the patient can start a new conversation
             </Text>
-          </Pressable>
-        ) : null}
+          </View>
+        )}
       </View>
     </View>
   );
