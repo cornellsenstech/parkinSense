@@ -18,6 +18,20 @@ export const QUICK_MESSAGES = [
   { id: "appointment", text: "I would like to arrange an appointment" },
 ];
 
+// A refill request is a conversation with a different shape, not a different
+// system: it still needs a reply, still needs closing, and still belongs in the
+// same inbox. Giving it a `kind` lets the doctor triage it separately without
+// splitting the thread model in two.
+export const CONVERSATION_KINDS = {
+  message: { label: "Message", icon: "chatbubble-ellipses", colour: "#1d4ed8" },
+  refill: { label: "Refill request", icon: "medkit", colour: "#7c3aed" },
+  questions: { label: "Appointment questions", icon: "list", colour: "#0f766e" },
+};
+
+export function conversationKind(conversation) {
+  return CONVERSATION_KINDS[conversation?.kind] || CONVERSATION_KINDS.message;
+}
+
 function clockLabel(date) {
   return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
@@ -47,7 +61,9 @@ export function turnAuthor(turn, patientFirstName) {
 // Conversations saved before threads existed had a single `text` plus an
 // optional `reply`. Convert them on read so old demo data still opens.
 function migrate(entry) {
-  if (Array.isArray(entry.turns)) return entry;
+  if (Array.isArray(entry.turns)) {
+    return entry.kind ? entry : { ...entry, kind: "message" };
+  }
 
   const turns = [
     {
@@ -63,6 +79,7 @@ function migrate(entry) {
     id: entry.id,
     patientId: entry.patientId,
     patientName: entry.patientName,
+    kind: "message",
     urgent: Boolean(entry.urgent),
     closed: Boolean(entry.read || entry.handled),
     turns,
@@ -127,6 +144,7 @@ export async function startConversation({
   text,
   urgent,
   by,
+  kind = "message",
 }) {
   if (!text.trim()) return false;
   const list = await readAll();
@@ -134,11 +152,60 @@ export async function startConversation({
     id: `c-${Date.now()}-${patientId}`,
     patientId,
     patientName,
+    kind: CONVERSATION_KINDS[kind] ? kind : "message",
     urgent: Boolean(urgent),
     closed: false,
     turns: [makeTurn("patient", text, by)],
   };
   return writeAll([conversation, ...list]);
+}
+
+// A refill request. Written as ordinary sentences rather than a form payload so
+// the doctor's inbox needs no special renderer, and so the thread still reads
+// like a conversation once a reply arrives.
+export async function requestRefill({
+  patientId,
+  patientName,
+  medication,
+  supplyLeft,
+  pharmacy,
+  by,
+}) {
+  const lines = [
+    `Refill request for ${medication || "my levodopa"}.`,
+    supplyLeft ? `I have about ${supplyLeft} left.` : null,
+    pharmacy ? `Please send it to ${pharmacy}.` : null,
+  ].filter(Boolean);
+
+  return startConversation({
+    patientId,
+    patientName,
+    text: lines.join("\n"),
+    urgent: false,
+    by,
+    kind: "refill",
+  });
+}
+
+// The appointment notepad, sent as one thread so the questions arrive together
+// rather than as four separate messages.
+export async function sendQuestions({ patientId, patientName, questions, by }) {
+  const open = questions.filter((q) => !q.answered);
+  if (!open.length) return false;
+
+  const text = [
+    "Questions I would like to go through at my next appointment:",
+    ...open.map((q, i) => `${i + 1}. ${q.text}`),
+  ].join("\n");
+
+  return startConversation({
+    patientId,
+    patientName,
+    text,
+    urgent: false,
+    by,
+    kind: "questions",
+  });
 }
 
 // Either side can keep adding turns until the doctor closes the thread. A

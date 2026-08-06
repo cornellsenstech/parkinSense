@@ -1,6 +1,6 @@
 import { ScrollView, Text, View } from "react-native";
 import Svg, { Circle, Line, Polyline, Rect } from "react-native-svg";
-import { CHART_MAX, RANGE_HIGH, RANGE_LOW, levelTone } from "../data/history";
+import { CHART_MAX, levelTone, rangeFor } from "../data/history";
 
 const HEIGHT = 220; // whole chart, in pixels
 const PAD_TOP = 14;
@@ -16,7 +16,8 @@ function yFor(level) {
 
 // Line chart with the therapeutic window shaded behind it. Scrolls sideways
 // through the full history; tapping a dot selects that reading.
-export default function LevelLineChart({ data, selectedId, onSelect }) {
+export default function LevelLineChart({ data, selectedId, onSelect, patientId }) {
+  const { low, high } = rangeFor(patientId);
   const width = data.length * STEP;
   const points = data.map((r, i) => `${i * STEP + STEP / 2},${yFor(r.level)}`).join(" ");
 
@@ -45,9 +46,9 @@ export default function LevelLineChart({ data, selectedId, onSelect }) {
           {/* Therapeutic window */}
           <Rect
             x="0"
-            y={yFor(RANGE_HIGH)}
+            y={yFor(high)}
             width={width}
-            height={yFor(RANGE_LOW) - yFor(RANGE_HIGH)}
+            height={yFor(low) - yFor(high)}
             fill="#dcfce7"
           />
 
@@ -81,7 +82,7 @@ export default function LevelLineChart({ data, selectedId, onSelect }) {
           <Polyline points={points} fill="none" stroke="#4ade80" strokeWidth="2.5" />
 
           {data.map((reading, i) => {
-            const tone = levelTone(reading.level);
+            const tone = levelTone(reading.level, patientId);
             const selected = reading.id === selectedId;
             const cx = i * STEP + STEP / 2;
             return (

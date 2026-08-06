@@ -15,11 +15,14 @@ const REPORTER_STYLE = {
 const SHORT = {
   stiffness: "Stiffness",
   tremor: "Tremor",
-  fatigue: "Fatigue",
+  slowness: "Slowness",
+  dyskinesia: "Extra mvmt",
+  fatigue: "Tiredness",
   pain: "Pain",
   cognition: "Thinking",
   speech: "Speech",
-  digestion: "Digestion",
+  constipation: "Constipation",
+  bloating: "Bloating",
 };
 
 const TIME_W = 88;

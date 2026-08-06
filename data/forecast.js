@@ -1,4 +1,4 @@
-import { RANGE_LOW, getTodayTrend } from "./history";
+import { getTodayTrend, rangeFor } from "./history";
 
 // Estimates when the level will fall through the therapeutic floor.
 //
@@ -17,12 +17,16 @@ const MIN_POINTS = 4;
 const MIN_FIT = 0.6; // below this the readings are too scattered to trust
 
 export function forecastOff(patientId) {
+  // The floor is this patient's own, not a fixed 500. Forecasting against the
+  // wrong floor would tell someone with a lower window that they are about to
+  // go off when they are not, and vice versa.
+  const { low: floor } = rangeFor(patientId);
   const points = getTodayTrend(patientId);
   const latest = points[points.length - 1];
   if (!latest) return { state: "unclear" };
 
   // Already below the floor is a current fact, not a forecast.
-  if (latest.level <= RANGE_LOW) {
+  if (latest.level <= floor) {
     return { state: "already-low", level: latest.level };
   }
 
@@ -47,7 +51,7 @@ export function forecastOff(patientId) {
   if (fit.r2 < MIN_FIT) return { state: "unclear", level: latest.level };
 
   const rate = -fit.slope; // clearance per minute
-  const minutes = Math.log(latest.level / RANGE_LOW) / rate;
+  const minutes = Math.log(latest.level / floor) / rate;
   if (!isFinite(minutes) || minutes <= 0) return { state: "unclear" };
 
   // A point estimate would imply precision the fit does not have, so widen it

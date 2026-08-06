@@ -1,3 +1,5 @@
+import { patients } from "./patients";
+
 // Mock levodopa history, in ng/mL. One reading per hour across two days.
 // Shaped like a real dosing day: an overnight trough that drops below the
 // therapeutic floor, then three doses that each peak and decay.
@@ -84,16 +86,26 @@ function clockLabel(minute) {
 
 // One plain sentence describing the day, derived from the data rather than
 // hardcoded — so it stays true and can be read aloud later.
-export function describeTrend(points) {
+export function describeTrend(points, patientId) {
   if (!points.length) return "";
+  const { low, high } = rangeFor(patientId);
   const last = points[points.length - 1].level;
   const previous = points.length > 1 ? points[points.length - 2].level : last;
-  const inRange = points.filter(
-    (p) => p.level >= RANGE_LOW && p.level <= RANGE_HIGH
-  ).length;
+  const inRange = points.filter((p) => p.level >= low && p.level <= high).length;
   const percent = Math.round((inRange / points.length) * 100);
   const direction = last > previous ? "rising" : last < previous ? "falling" : "steady";
   return `Now ${last} ng/mL and ${direction}. ${percent}% of today has been in range.`;
+}
+
+// Which way the day is heading right now. Split out of describeTrend because the
+// dyskinesia check needs the direction on its own, not inside a sentence.
+export function trendDirection(points) {
+  if (points.length < 2) return "steady";
+  const last = points[points.length - 1].level;
+  const previous = points[points.length - 2].level;
+  if (last > previous) return "rising";
+  if (last < previous) return "falling";
+  return "steady";
 }
 
 // Symptom check-ins, one every four hours, oldest first.
@@ -122,17 +134,67 @@ export function getSymptomLog(patientId) {
     });
 }
 
-// Therapeutic window for levodopa is 500-1500 ng/mL.
+// Default therapeutic window for levodopa, 500-1500 ng/mL.
 // Research: optimum response is ~300-1600 ng/mL and effective oral levels are
 // ~400-1200. Only 200-400 ng/mL separates the "off" state from the "on" state.
 //   https://pmc.ncbi.nlm.nih.gov/articles/PMC1401168/
 //   https://pmc.ncbi.nlm.nih.gov/articles/PMC9686322/
+//
+// These stay exported as the fallback, but the window is really per patient —
+// it narrows with disease duration and with dyskinesia. Prefer rangeFor().
 export const RANGE_LOW = 500;
 export const RANGE_HIGH = 1500;
 export const CHART_MAX = 2000;
 
-export function levelTone(level) {
-  if (level < RANGE_LOW) return { color: "#2563eb", label: "Low" };
-  if (level > RANGE_HIGH) return { color: "#dc2626", label: "High" };
+// Per-patient window, falling back to the default when a patient has none set.
+export function rangeFor(patientId) {
+  const patient = patients.find((p) => p.id === patientId);
+  return {
+    low: patient?.rangeLow ?? RANGE_LOW,
+    high: patient?.rangeHigh ?? RANGE_HIGH,
+  };
+}
+
+export function levelTone(level, patientId) {
+  const { low, high } = rangeFor(patientId);
+  if (level < low) return { color: "#2563eb", label: "Low" };
+  if (level > high) return { color: "#dc2626", label: "High" };
   return { color: "#16a34a", label: "In range" };
+}
+
+// Where extra movements are plausible.
+//
+// It is not simply "high level". Peak-dose dyskinesia happens near the top of
+// the window, but diphasic dyskinesia happens while the level is CLIMBING into
+// or FALLING out of the window — that is, at low readings. Flagging only the
+// high end would tell a patient their extra movements are impossible when they
+// are in fact well described.
+//
+// `direction` is "rising", "falling" or "steady".
+export function dyskinesiaRisk(level, patientId, direction = "steady") {
+  const { low, high } = rangeFor(patientId);
+
+  if (level > high) {
+    return {
+      risk: true,
+      kind: "peak",
+      note: "Extra movements are most likely near the top of your range.",
+    };
+  }
+
+  // The transition band: the lower part of the window and just below it, but
+  // only while the level is actually moving through it.
+  const movingThroughLow = level < low * 1.3 && direction !== "steady";
+  if (movingThroughLow) {
+    return {
+      risk: true,
+      kind: "diphasic",
+      note:
+        direction === "rising"
+          ? "Extra movements can also happen as your level climbs, before it reaches your range."
+          : "Extra movements can also happen as your level drops out of your range, not only when it is high.",
+    };
+  }
+
+  return { risk: false, kind: null, note: null };
 }

@@ -6,6 +6,7 @@ import { T, sectionLabel } from "../../components/theme";
 import {
   addTurn,
   closeConversation,
+  conversationKind,
   getConversations,
   isOpen,
   lastTurn,
@@ -266,6 +267,38 @@ function MessageCard({ message, onDone }) {
           <Text style={{ fontSize: 16, fontWeight: "700", color: T.ink, flex: 1 }}>
             {message.patientName}
           </Text>
+          {/* A refill or a list of appointment questions is a different job from
+              a clinical message, and reads differently in a queue. */}
+          {message.kind && message.kind !== "message" ? (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                borderRadius: 999,
+                borderWidth: 1,
+                borderColor: conversationKind(message).colour,
+                paddingHorizontal: 8,
+                paddingVertical: 3,
+                marginRight: 8,
+              }}
+            >
+              <Ionicons
+                name={conversationKind(message).icon}
+                size={11}
+                color={conversationKind(message).colour}
+              />
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: "800",
+                  color: conversationKind(message).colour,
+                  marginLeft: 4,
+                }}
+              >
+                {conversationKind(message).label.toUpperCase()}
+              </Text>
+            </View>
+          ) : null}
           {message.urgent ? (
             <View
               style={{

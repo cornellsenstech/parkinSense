@@ -4,15 +4,10 @@ import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import StatusBadge from "../../components/StatusBadge";
 import CombinedChart from "../../components/CombinedChart";
 import { WIDE_WIDTH, page } from "../../components/layout";
-import {
-  RANGE_HIGH,
-  RANGE_LOW,
-  getHistory,
-  getSymptomLog,
-} from "../../data/history";
+import { getHistory, getSymptomLog, rangeFor } from "../../data/history";
 import { loadNote, saveNote } from "../../data/notes";
-import { loadMeals } from "../../data/mealLog";
-import { chronological, loadEntries } from "../../data/symptomLog";
+import { useLiveRecords, sinceLabel } from "../../data/live";
+import { notablePoints, weeklySummary } from "../../data/weekly";
 
 // Read-only clinician view of one patient. Same chart components as the
 // patient side, so the two portals can never disagree about the data — but
@@ -22,23 +17,12 @@ export default function PatientDetail({ patient, onBack }) {
   const symptoms = getSymptomLog(patient.id);
   const [note, setNote] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
-  const [meals, setMeals] = useState([]);
-  const [checkIns, setCheckIns] = useState([]);
 
-  useEffect(() => {
-    let active = true;
-    loadMeals(patient.id).then((list) => {
-      if (active) setMeals(list);
-    });
-    // The patient's and caregiver's own check-ins, which carry all seven
-    // symptoms rather than the two the demo curve implies.
-    loadEntries(patient.id).then((list) => {
-      if (active) setCheckIns(chronological(list));
-    });
-    return () => {
-      active = false;
-    };
-  }, [patient.id]);
+  // Everything the patient and caregiver recorded, re-read as they record it —
+  // a check-in saved in the patient tab lands here without a refresh.
+  const { meals, checkIns, doses, exercise, updatedAt } = useLiveRecords(
+    patient.id
+  );
 
   // Reload whenever the doctor opens a different patient. The `active` flag
   // drops a slow read if they switch again before it resolves, so one
@@ -60,21 +44,35 @@ export default function PatientDetail({ patient, onBack }) {
     setSaveStatus(ok ? "Saved" : "Could not save — try again");
   }
 
+  // This patient's own therapeutic window, not a fixed 500-1500. Time in range
+  // computed against the wrong window is worse than not showing it.
+  const { low, high } = rangeFor(patient.id);
+
   const average = Math.round(
     readings.reduce((sum, r) => sum + r.level, 0) / readings.length
   );
   const inRange = readings.filter(
-    (r) => r.level >= RANGE_LOW && r.level <= RANGE_HIGH
+    (r) => r.level >= low && r.level <= high
   ).length;
   const percentInRange = Math.round((inRange / readings.length) * 100);
+
+  const summary = weeklySummary({
+    patientId: patient.id,
+    readings,
+    checkIns,
+    meals,
+    doses,
+    exercise,
+  });
+  const notable = notablePoints(summary);
 
   // An observation built from this patient's own numbers. Cites the actual
   // lowest and highest readings and when they happened, so two patients never
   // get the same sentence.
   const lowest = readings.reduce((a, b) => (b.level < a.level ? b : a));
   const highest = readings.reduce((a, b) => (b.level > a.level ? b : a));
-  const belowCount = readings.filter((r) => r.level < RANGE_LOW).length;
-  const aboveCount = readings.filter((r) => r.level > RANGE_HIGH).length;
+  const belowCount = readings.filter((r) => r.level < low).length;
+  const aboveCount = readings.filter((r) => r.level > high).length;
 
   const observation = buildObservation({
     percentInRange,
@@ -123,9 +121,27 @@ export default function PatientDetail({ patient, onBack }) {
       </Pressable>
 
       <Text className="text-3xl font-bold text-gray-900">{patient.name}</Text>
-      <Text className="text-sm text-gray-500 mb-4">
-        Age {patient.age} • Updated {patient.lastUpdated}
+      <Text className="text-sm text-gray-500">
+        Age {patient.age} • Sensor updated {patient.lastUpdated} • Range {low}–
+        {high} ng/mL
       </Text>
+      {/* Says which half of the screen is live. The sensor feed is still mocked,
+          so only the patient-entered records refresh — claiming more than that
+          would be the kind of thing a clinician finds out the hard way. */}
+      <View className="flex-row items-center mb-4 mt-1">
+        <View
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: "#16a34a",
+          }}
+        />
+        <Text className="text-xs text-gray-500 ml-2">
+          Patient-entered records refreshed {sinceLabel(updatedAt)} — check-ins,
+          doses, meals and activity update as they are logged
+        </Text>
+      </View>
 
       {/* Summary */}
       <View className="flex-row bg-white rounded-xl border border-gray-200 mb-3">
@@ -158,14 +174,104 @@ export default function PatientDetail({ patient, onBack }) {
         </View>
       </Section>
 
-      {/* Levels, every reported symptom, and protein on one time axis. The
-          correlation is the point and cannot be read from separate charts. */}
-      <Section title="Levels, symptoms and meals together">
+      {/* The week at a glance, before the chart. A clinician with four minutes
+          reads this and nothing else, so it leads with what would change a
+          decision rather than with the averages. */}
+      <Section title="This week">
+        <View className="flex-row bg-gray-50 border border-gray-200 rounded-lg mb-3">
+          <Stat
+            value={summary.overall != null ? summary.overall : "—"}
+            label="Mean symptom /4"
+          />
+          <Stat
+            value={
+              summary.overallChange == null
+                ? "—"
+                : `${summary.overallChange > 0 ? "+" : ""}${summary.overallChange}`
+            }
+            label="vs last week"
+            divider
+          />
+          <Stat
+            value={
+              summary.doses.adherence == null ? "—" : `${summary.doses.adherence}%`
+            }
+            label="Doses taken"
+            divider
+          />
+          <Stat value={summary.doses.rescue} label="Rescue doses" divider />
+          <Stat
+            value={`${summary.exercise.activeDays}/7`}
+            label="Active days"
+            divider
+          />
+          <Stat value={summary.checkIns} label="Check-ins" divider />
+        </View>
+
+        {notable.length ? (
+          notable.map((point, i) => (
+            <View key={i} className="flex-row items-start mb-2">
+              <View
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 3,
+                  marginTop: 6,
+                  backgroundColor:
+                    point.tone === "warn"
+                      ? "#dc2626"
+                      : point.tone === "good"
+                      ? "#16a34a"
+                      : "#94a3b8",
+                }}
+              />
+              <Text className="text-sm text-gray-700 ml-2 flex-1">
+                {point.text}
+              </Text>
+            </View>
+          ))
+        ) : (
+          <Text className="text-sm text-gray-500">
+            Nothing stood out this week against the week before.
+          </Text>
+        )}
+
+        {/* Per-symptom means, so "worse" can be attributed to something. */}
+        <View className="flex-row flex-wrap mt-3">
+          {summary.movers.map((m) => (
+            <View
+              key={m.id}
+              className="flex-row items-center border border-gray-200 rounded-lg px-2 py-1 mr-2 mb-2"
+            >
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: m.colour,
+                }}
+              />
+              <Text className="text-xs text-gray-700 ml-2">
+                {m.label} {m.mean}
+                {m.change != null && Math.abs(m.change) >= 0.4
+                  ? ` (${m.change > 0 ? "+" : ""}${Math.round(m.change * 10) / 10})`
+                  : ""}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </Section>
+
+      {/* Levels, every reported symptom, protein and doses on one time axis.
+          The correlation is the point and cannot be read from separate charts. */}
+      <Section title="Levels, symptoms, meals and doses together">
         <CombinedChart
           readings={readings}
           symptoms={symptoms}
           checkIns={checkIns}
           meals={meals}
+          doses={doses}
+          patientId={patient.id}
         />
         <Text className="text-xs text-gray-500 mt-2">
           Dashed lines are symptom scores on the right axis. Solid line is

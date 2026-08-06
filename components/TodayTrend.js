@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Text, View } from "react-native";
 import Svg, { Circle, Line, Polyline, Rect } from "react-native-svg";
-import { CHART_MAX, RANGE_HIGH, RANGE_LOW, levelTone } from "../data/history";
+import { CHART_MAX, levelTone, rangeFor } from "../data/history";
 
 const HEIGHT = 150;
 const PAD = 12;
@@ -9,8 +9,9 @@ const PAD = 12;
 // Compact chart of midnight -> now. Always 24 segments, so it fills the card
 // width whatever the time of day. Measures its own width via onLayout because
 // a percentage width would distort the stroke.
-export default function TodayTrend({ points }) {
+export default function TodayTrend({ points, patientId }) {
   const [width, setWidth] = useState(0);
+  const { low, high } = rangeFor(patientId);
 
   const y = (level) => PAD + (1 - level / CHART_MAX) * (HEIGHT - PAD * 2);
   const x = (i) => PAD + (i / (points.length - 1)) * (width - PAD * 2);
@@ -26,24 +27,24 @@ export default function TodayTrend({ points }) {
             {/* Therapeutic window */}
             <Rect
               x="0"
-              y={y(RANGE_HIGH)}
+              y={y(high)}
               width={width}
-              height={y(RANGE_LOW) - y(RANGE_HIGH)}
+              height={y(low) - y(high)}
               fill="#dcfce7"
             />
             <Line
               x1="0"
-              y1={y(RANGE_LOW)}
+              y1={y(low)}
               x2={width}
-              y2={y(RANGE_LOW)}
+              y2={y(low)}
               stroke="#d1d5db"
               strokeWidth="1"
             />
             <Line
               x1="0"
-              y1={y(RANGE_HIGH)}
+              y1={y(high)}
               x2={width}
-              y2={y(RANGE_HIGH)}
+              y2={y(high)}
               stroke="#d1d5db"
               strokeWidth="1"
             />
@@ -55,7 +56,7 @@ export default function TodayTrend({ points }) {
               cx={x(points.length - 1)}
               cy={y(last.level)}
               r="7"
-              fill={levelTone(last.level).color}
+              fill={levelTone(last.level, patientId).color}
               stroke="#ffffff"
               strokeWidth="2.5"
             />

@@ -1,5 +1,11 @@
 // Mock patient roster shared by both portals. `level` is levodopa plasma
-// concentration in ng/mL; therapeutic window is 500–1500 (see data/history.js).
+// concentration in ng/mL.
+//
+// The therapeutic window is per patient, not universal. 500–1500 is the usual
+// starting point (see data/history.js), but the window narrows as the disease
+// advances and as dyskinesia develops — the level that helps and the level that
+// causes extra movements move closer together. Helen's window is deliberately
+// the narrowest of the four, which is why she flags high so readily.
 //
 // Weight and height are clinical fields, not decoration: levodopa dosing and
 // clearance both depend on them. Written out in words rather than symbols so
@@ -9,6 +15,8 @@
 export const patients = [
   {
     id: "robert",
+    rangeLow: 500,
+    rangeHigh: 1500,
     name: "Robert Ellis",
     age: 62,
     weight: "165 lbs",
@@ -26,6 +34,8 @@ export const patients = [
   },
   {
     id: "margaret",
+    rangeLow: 450,
+    rangeHigh: 1400,
     name: "Margaret Chen",
     age: 68,
     weight: "140 lbs",
@@ -43,6 +53,8 @@ export const patients = [
   },
   {
     id: "frank",
+    rangeLow: 550,
+    rangeHigh: 1600,
     name: "Frank Delgado",
     age: 71,
     weight: "190 lbs",
@@ -60,6 +72,8 @@ export const patients = [
   },
   {
     id: "helen",
+    rangeLow: 500,
+    rangeHigh: 1250,
     name: "Helen Okafor",
     age: 57,
     weight: "155 lbs",

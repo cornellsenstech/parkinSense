@@ -18,26 +18,33 @@ import {
 import { SYMPTOMS, sleepLabel } from "../data/symptoms";
 import { Ionicons } from "@expo/vector-icons";
 import { page, useWide } from "../components/layout";
+import { getHistory, levelTone, rangeFor } from "../data/history";
 import {
-  RANGE_HIGH,
-  RANGE_LOW,
-  getHistory,
-  levelTone,
-} from "../data/history";
+  exerciseSummary,
+  intensity,
+  loadExercise,
+} from "../data/exerciseLog";
+import { doseKind, doseSummary, loadDoses } from "../data/doseLog";
 import { RoleContext } from "../context/RoleContext";
 import { AccessibilityContext } from "../context/AccessibilityContext";
+
+const VIEWS = ["Concentration", "Symptoms", "Meals", "Activity", "Doses"];
 
 export default function History() {
   const { user } = useContext(RoleContext);
   const readings = getHistory(user);
 
-  // The patient's own saved check-ins and meals, rather than anything derived.
+  // Everything the patient actually recorded, rather than anything derived.
   const [checkIns, setCheckIns] = useState([]);
   const [meals, setMeals] = useState([]);
+  const [exercise, setExercise] = useState([]);
+  const [doses, setDoses] = useState([]);
 
   useEffect(() => {
     loadEntries(user).then((list) => setCheckIns(chronological(list)));
     loadMeals(user).then(setMeals);
+    loadExercise(user).then(setExercise);
+    loadDoses(user).then(setDoses);
   }, [user]);
 
   const wide = useWide();
@@ -51,7 +58,10 @@ export default function History() {
   const [selected, setSelected] = useState(readings[readings.length - 1]);
 
   const showLevels = view === "Concentration";
+  const showSymptoms = view === "Symptoms";
   const showMeals = view === "Meals";
+  const showActivity = view === "Activity";
+  const showDoses = view === "Doses";
   const days = [...new Set(readings.map((r) => r.day))];
 
   return (
@@ -72,9 +82,17 @@ export default function History() {
         Overview
       </Text>
 
-      {/* Switches both the graph and the list below it */}
-      <View className="flex-row bg-white rounded-xl border border-gray-200 p-1 mb-4">
-        {["Concentration", "Symptoms", "Meals"].map((option) => {
+      {/* Switches both the graph and the list below it. Five options wrap
+          rather than squeezing into one row — at phone width, five equal
+          segments give labels nobody can read. */}
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          marginBottom: 16,
+        }}
+      >
+        {VIEWS.map((option) => {
           const active = option === view;
           return (
             <Pressable
@@ -82,15 +100,25 @@ export default function History() {
               onPress={() => setView(option)}
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
-              className={`flex-1 items-center justify-center rounded-lg ${
-                active ? "bg-gray-100" : ""
-              }`}
-              style={{ minHeight: 44 }}
+              accessibilityLabel={option}
+              style={{
+                minHeight: 46,
+                justifyContent: "center",
+                paddingHorizontal: 16,
+                marginRight: 8,
+                marginBottom: 8,
+                borderRadius: 23,
+                backgroundColor: active ? "#0f172a" : "#ffffff",
+                borderWidth: 1,
+                borderColor: active ? "#0f172a" : "#d1d5db",
+              }}
             >
               <Text
-                className={`text-base ${
-                  active ? "font-bold text-gray-900" : "text-gray-500"
-                }`}
+                style={{
+                  fontSize: 16 * scale,
+                  fontWeight: active ? "700" : "500",
+                  color: active ? "#ffffff" : "#475569",
+                }}
               >
                 {option}
               </Text>
@@ -101,9 +129,7 @@ export default function History() {
 
       {/* One graph at a time, matching the selection above */}
       <View className="bg-white rounded-3xl border border-gray-200 p-5 mb-5">
-        {showMeals ? (
-          <MealStats meals={meals} scale={scale} />
-        ) : showLevels ? (
+        {showLevels ? (
           <>
             <ChartLegend />
             {selected ? (
@@ -113,9 +139,9 @@ export default function History() {
                 </Text>
                 <Text
                   className="text-base font-semibold text-center"
-                  style={{ color: levelTone(selected.level).color }}
+                  style={{ color: levelTone(selected.level, user).color }}
                 >
-                  {levelTone(selected.level).label}
+                  {levelTone(selected.level, user).label}
                 </Text>
                 <Text className="text-sm text-gray-500 text-center">
                   {selected.time}
@@ -126,28 +152,32 @@ export default function History() {
               data={readings}
               selectedId={selected ? selected.id : null}
               onSelect={setSelected}
+              patientId={user}
             />
             <ChartFooter days={days} />
           </>
-        ) : (
+        ) : showSymptoms ? (
           <>
             <Text className="text-xl font-bold text-gray-900 mb-3">
               Symptoms over time
             </Text>
             <SymptomHistoryChart entries={checkIns} scale={scale} />
           </>
+        ) : showMeals ? (
+          <MealStats meals={meals} scale={scale} />
+        ) : showActivity ? (
+          <ActivityStats entries={exercise} scale={scale} />
+        ) : (
+          <DoseStats entries={doses} scale={scale} />
         )}
       </View>
 
       {/* Summary numbers for whichever view is showing */}
-      {showMeals ? null : showLevels ? (
-        <LevelStats readings={readings} />
-      ) : (
-        <SymptomStats entries={checkIns} />
-      )}
+      {showLevels ? <LevelStats readings={readings} patientId={user} /> : null}
+      {showSymptoms ? <SymptomStats entries={checkIns} /> : null}
 
       {/* The matching list */}
-      {showMeals ? null : showLevels
+      {showLevels
         ? days
             .slice()
             .reverse()
@@ -175,27 +205,18 @@ export default function History() {
                 </View>
               </View>
             ))
-        : (
-            <View className="bg-white rounded-2xl border border-gray-200 p-4">
-              <SymptomTable
-                entries={[...checkIns].reverse()}
-                scale={scale}
-              />
-            </View>
-          )}
+        : null}
+
+      {showSymptoms ? (
+        <View className="bg-white rounded-2xl border border-gray-200 p-4">
+          <SymptomTable entries={[...checkIns].reverse()} scale={scale} />
+        </View>
+      ) : null}
 
       {/* Meals, because protein competes with levodopa for absorption */}
       {showMeals && meals.length ? (
-        <View style={{ marginTop: 22 }}>
-          {groupByDate(meals).map((group) => (
-            <View key={group.label}>
-              <Text
-                className="font-bold text-gray-900 mb-2 mt-3"
-                style={{ fontSize: 18 * scale }}
-              >
-                {group.label}
-              </Text>
-              {group.items.map((meal) => {
+        <DateGroups items={meals} scale={scale}>
+          {(meal) => {
             const near = doseProximity(meal);
             return (
               <View
@@ -210,26 +231,19 @@ export default function History() {
                   />
                   <Text
                     className="text-gray-900 ml-2 flex-1"
-                    style={{ fontSize: 17 * scale }}
+                    style={{ fontSize: 17 * scale, minWidth: 0 }}
                   >
                     {meal.timeLabel}
                     {meal.food ? ` · ${meal.food}` : ""}
                   </Text>
-                  <Text
-                    className="text-gray-600"
-                    style={{ fontSize: 15 * scale }}
-                  >
+                  <Text className="text-gray-600" style={{ fontSize: 15 * scale }}>
                     {proteinLabel(meal.protein)}
                   </Text>
                 </View>
 
                 {near?.flag ? (
                   <Text
-                    style={{
-                      fontSize: 15 * scale,
-                      color: "#9a3412",
-                      marginTop: 4,
-                    }}
+                    style={{ fontSize: 15 * scale, color: "#9a3412", marginTop: 4 }}
                   >
                     About {near.minutes} minutes from the {near.doseLabel} dose
                   </Text>
@@ -246,58 +260,150 @@ export default function History() {
                       How much protein was in this?
                     </Text>
                     <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
-                      {PROTEIN_LEVELS.filter((p) => p.id !== "unsure").map(
-                        (level) => (
-                          <Pressable
-                            key={level.id}
-                            onPress={() => fillProtein(meal.id, level.id)}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Set to ${level.label}`}
+                      {PROTEIN_LEVELS.filter((p) => p.id !== "unsure").map((level) => (
+                        <Pressable
+                          key={level.id}
+                          onPress={() => fillProtein(meal.id, level.id)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Set to ${level.label}`}
+                          style={{
+                            minHeight: 48,
+                            paddingHorizontal: 14,
+                            marginRight: 8,
+                            marginBottom: 8,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            borderRadius: 10,
+                            backgroundColor: "#f1f5f9",
+                            borderWidth: 1,
+                            borderColor: "#cbd5e1",
+                          }}
+                        >
+                          <Text
                             style={{
-                              minHeight: 48,
-                              paddingHorizontal: 14,
-                              marginRight: 8,
-                              marginBottom: 8,
-                              alignItems: "center",
-                              justifyContent: "center",
-                              borderRadius: 10,
-                              backgroundColor: "#f1f5f9",
-                              borderWidth: 1,
-                              borderColor: "#cbd5e1",
+                              fontSize: 15 * scale,
+                              fontWeight: "600",
+                              color: "#0f172a",
                             }}
                           >
-                            <Text
-                              style={{
-                                fontSize: 15 * scale,
-                                fontWeight: "600",
-                                color: "#0f172a",
-                              }}
-                            >
-                              {level.label}
-                            </Text>
-                          </Pressable>
-                        )
-                      )}
+                            {level.label}
+                          </Text>
+                        </Pressable>
+                      ))}
                     </View>
                   </View>
                 ) : null}
               </View>
             );
-              })}
-            </View>
-          ))}
-        </View>
+          }}
+        </DateGroups>
       ) : null}
+
+      {/* Activity, sectioned the same way as meals */}
+      {showActivity && exercise.length ? (
+        <DateGroups items={exercise} scale={scale}>
+          {(item) => {
+            const level = intensity(item.level);
+            return (
+              <View
+                key={item.id}
+                className="bg-white rounded-2xl border border-gray-200 px-4 py-3 mb-2"
+              >
+                <View className="flex-row items-center">
+                  <View
+                    style={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: 6,
+                      backgroundColor: level.colour,
+                    }}
+                  />
+                  <Text
+                    className="text-gray-900 ml-2 flex-1"
+                    style={{ fontSize: 17 * scale, minWidth: 0 }}
+                  >
+                    {item.timeLabel} · {item.activity}
+                  </Text>
+                  <Text className="text-gray-600" style={{ fontSize: 15 * scale }}>
+                    {item.minutes} min · {level.label}
+                  </Text>
+                </View>
+              </View>
+            );
+          }}
+        </DateGroups>
+      ) : null}
+
+      {/* Doses: taken, missed and rescue, which is what separates a normal
+          pre-dose trough from having no medication on board */}
+      {showDoses && doses.length ? (
+        <DateGroups items={doses} scale={scale}>
+          {(item) => {
+            const kind = doseKind(item.kind);
+            return (
+              <View
+                key={item.id}
+                className="bg-white rounded-2xl border border-gray-200 px-4 py-3 mb-2"
+              >
+                <View className="flex-row items-center">
+                  <Ionicons name={kind.icon} size={20} color={kind.colour} />
+                  <Text
+                    className="text-gray-900 ml-2 flex-1"
+                    style={{ fontSize: 17 * scale, minWidth: 0 }}
+                  >
+                    {item.timeLabel} · {kind.short}
+                  </Text>
+                  <Text className="text-gray-600" style={{ fontSize: 15 * scale }}>
+                    {item.by === "caregiver" ? "caregiver" : "patient"}
+                  </Text>
+                </View>
+                {item.note ? (
+                  <Text
+                    style={{ fontSize: 15 * scale, color: "#475569", marginTop: 4 }}
+                  >
+                    {item.note}
+                  </Text>
+                ) : null}
+              </View>
+            );
+          }}
+        </DateGroups>
+      ) : null}
+
     </ScrollView>
   );
 }
 
-// Groups entries under a date heading, newest day first, so a fortnight of meals
-// reads as days rather than one undifferentiated list.
+// Meals, activity and doses are three different stores with the same shape of
+// problem — a fortnight of entries reading as one undifferentiated list — so
+// they share one date-grouped renderer rather than three copies of it.
+function DateGroups({ items, scale, children }) {
+  return (
+    <View style={{ marginTop: 22 }}>
+      {groupByDate(items).map((group) => (
+        <View key={group.label}>
+          <Text
+            className="font-bold text-gray-900 mb-2 mt-3"
+            style={{ fontSize: 18 * scale }}
+          >
+            {group.label}
+          </Text>
+          {group.items.map((item) => children(item))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+// Groups entries under a date heading, newest day first. Each store names its
+// timestamp differently, so all four are accepted here rather than forcing a
+// rename across the data layer.
 function groupByDate(items) {
   const groups = new Map();
   items.forEach((item) => {
-    const at = new Date(item.eatenAt ?? item.savedAt);
+    const at = new Date(
+      item.eatenAt ?? item.doneAt ?? item.takenAt ?? item.savedAt
+    );
     const key = at.toDateString();
     if (!groups.has(key)) {
       groups.set(key, { label: labelForDate(at), at: at.getTime(), items: [] });
@@ -319,12 +425,13 @@ function labelForDate(date) {
   });
 }
 
-function LevelStats({ readings }) {
+function LevelStats({ readings, patientId }) {
+  const { low, high } = rangeFor(patientId);
   const average = Math.round(
     readings.reduce((sum, r) => sum + r.level, 0) / readings.length
   );
   const inRange = readings.filter(
-    (r) => r.level >= RANGE_LOW && r.level <= RANGE_HIGH
+    (r) => r.level >= low && r.level <= high
   ).length;
   const percent = Math.round((inRange / readings.length) * 100);
 
@@ -333,6 +440,100 @@ function LevelStats({ readings }) {
       <Stat value={average} label="Avg ng/mL" />
       <Stat value={`${percent}%`} label="Time in range" divider />
       <Stat value={readings.length} label="Readings" divider />
+    </View>
+  );
+}
+
+// Summary for the Activity tab. Active days leads, ahead of total minutes,
+// because consistency is what the evidence supports — one long session on a
+// Sunday is not the same as moving on five days.
+function ActivityStats({ entries, scale }) {
+  if (!entries.length) {
+    return (
+      <Text style={{ fontSize: 16 * scale, color: "#64748b" }}>
+        No activity logged yet. Anything you record on the Home tab appears here.
+      </Text>
+    );
+  }
+
+  const week = exerciseSummary(entries, 7);
+  const fortnight = exerciseSummary(entries, 14);
+
+  return (
+    <View>
+      <Text
+        className="font-bold text-gray-900 mb-3"
+        style={{ fontSize: 20 * scale }}
+      >
+        Movement and exercise
+      </Text>
+
+      <View className="flex-row">
+        <Stat value={`${week.activeDays}/7`} label="Active days" />
+        <Stat value={week.totalMinutes} label="Minutes, 7 days" divider />
+        <Stat value={fortnight.sessions} label="Sessions, 14 days" divider />
+      </View>
+
+      <Text
+        style={{
+          fontSize: 16 * scale,
+          lineHeight: 23 * scale,
+          color: "#475569",
+          marginTop: 12,
+        }}
+      >
+        Regular activity is the one thing outside medication with good evidence
+        behind it in Parkinson's. Logged here so you and your care team can see
+        whether the better days are the active ones — {week.moderateMinutes} of
+        the last week's minutes were moderate or harder.
+      </Text>
+    </View>
+  );
+}
+
+// Summary for the Doses tab. Adherence deliberately excludes rescue doses:
+// taking an extra dose is not the same as taking a scheduled one, and counting
+// them together would hide both facts.
+function DoseStats({ entries, scale }) {
+  if (!entries.length) {
+    return (
+      <Text style={{ fontSize: 16 * scale, color: "#64748b" }}>
+        No doses logged yet. Record them on the Home tab and they appear here.
+      </Text>
+    );
+  }
+
+  const week = doseSummary(entries, 7);
+
+  return (
+    <View>
+      <Text
+        className="font-bold text-gray-900 mb-3"
+        style={{ fontSize: 20 * scale }}
+      >
+        Doses, last 7 days
+      </Text>
+
+      <View className="flex-row">
+        <Stat value={week.taken} label="Taken" />
+        <Stat value={week.missed} label="Missed" divider />
+        <Stat value={week.rescue} label="Extra doses" divider />
+      </View>
+
+      <Text
+        style={{
+          fontSize: 16 * scale,
+          lineHeight: 23 * scale,
+          color: "#475569",
+          marginTop: 12,
+        }}
+      >
+        {week.adherence != null
+          ? `${week.adherence}% of your scheduled doses were logged as taken.`
+          : "No scheduled doses logged yet this week."}{" "}
+        Extra doses are counted separately, because an unscheduled dose usually
+        means an off period broke through rather than that a dose was late.
+      </Text>
     </View>
   );
 }

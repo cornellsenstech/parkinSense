@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import AppointmentNotepad from "../components/AppointmentNotepad";
 import SpeakButton from "../components/SpeakButton";
 import { column, columns, page, useWide } from "../components/layout";
 import { T, sectionLabel } from "../components/theme";
@@ -333,6 +334,10 @@ export default function Help() {
 
         {/* ---------------- Conversation ---------------- */}
         <View style={column(wide)}>
+          {/* Questions and refills sit above the thread, not inside it. Neither
+              needs answering today, so neither belongs in the urgent queue. */}
+          <AppointmentNotepad patient={patient} />
+
           <View
             style={{
               flexDirection: "row",

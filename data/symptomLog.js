@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { emptyScores } from "./symptoms";
+import { emptyScores, migrateScores } from "./symptoms";
 
 // Symptom check-ins, kept per patient, newest first.
 //
@@ -19,9 +19,13 @@ export async function loadEntries(patientId) {
 }
 
 // Early entries stored stiffness and tremor as bare fields with no reporter.
-// Fold them into the current shape on read so old demo data still charts.
+// Later ones had a single `digestion` score and no slowness or dyskinesia.
+// Fold both into the current shape on read so old demo data still charts —
+// migrateScores owns the score-level part of that.
 function migrate(entry) {
-  if (entry.scores) return entry;
+  if (entry.scores) {
+    return { ...entry, scores: migrateScores(entry.scores) };
+  }
   return {
     ...entry,
     by: entry.by || "patient",

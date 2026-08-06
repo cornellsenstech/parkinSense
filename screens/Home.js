@@ -2,6 +2,8 @@ import { useContext, useEffect, useRef, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Card from "../components/Card";
+import DoseCard from "../components/DoseCard";
+import ExerciseLogCard from "../components/ExerciseLogCard";
 import MealLogCard from "../components/MealLogCard";
 import { column, columns, page, useWide } from "../components/layout";
 import SensorStatus from "../components/SensorStatusCard";
@@ -9,7 +11,13 @@ import StatusBadge from "../components/StatusBadge";
 import SymptomForm from "../components/SymptomForm";
 import ReporterToggle from "../components/ReporterToggle";
 import TodayTrend from "../components/TodayTrend";
-import { describeTrend, getTodayTrend } from "../data/history";
+import {
+  describeTrend,
+  dyskinesiaRisk,
+  getTodayTrend,
+  rangeFor,
+  trendDirection,
+} from "../data/history";
 import { describeForecast, forecastOff } from "../data/forecast";
 import { patients } from "../data/patients";
 import { defaultProfile, displayFirstName, loadProfile } from "../data/profile";
@@ -59,6 +67,14 @@ export default function Home() {
 
   const trend = getTodayTrend(patient.id);
   const forecast = describeForecast(forecastOff(patient.id));
+
+  // The window is this patient's, not a fixed 500-1500 — it narrows with
+  // disease duration and with dyskinesia, so showing everyone the same band
+  // would tell three of the four patients something untrue about their own
+  // readings.
+  const range = rangeFor(patient.id);
+  const direction = trendDirection(trend);
+  const dyskinesia = dyskinesiaRisk(patient.level, patient.id, direction);
 
   return (
     <ScrollView
@@ -129,8 +145,43 @@ export default function Home() {
         </View>
 
         <Text className="text-base text-gray-600 mt-2">
-          Updated {patient.lastUpdated}
+          Updated {patient.lastUpdated} · Your range is {range.low} to{" "}
+          {range.high} ng/mL
         </Text>
+
+        {/* Extra movements are not only a high-level problem. Peak-dose
+            dyskinesia happens near the top of the range, but diphasic
+            dyskinesia happens while the level is climbing into or falling out
+            of it — so a patient with a low reading and extra movements is
+            describing something real, not something impossible. */}
+        {dyskinesia.risk ? (
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "flex-start",
+              backgroundColor: "#fdf4ff",
+              borderRadius: 14,
+              borderWidth: 1,
+              borderColor: "#f0abfc",
+              padding: 12,
+              marginTop: 12,
+            }}
+          >
+            <Ionicons name="pulse" size={22} color="#a21caf" />
+            <Text
+              style={{
+                marginLeft: 8,
+                flex: 1,
+                minWidth: 0,
+                fontSize: 15 * scale,
+                lineHeight: 21 * scale,
+                color: "#86198f",
+              }}
+            >
+              {dyskinesia.note}
+            </Text>
+          </View>
+        ) : null}
 
         <View
           style={{
@@ -144,9 +195,9 @@ export default function Home() {
             Today so far
           </Text>
           <Text className="text-base text-gray-700 mb-3">
-            {describeTrend(trend)}
+            {describeTrend(trend, patient.id)}
           </Text>
-          <TodayTrend points={trend} />
+          <TodayTrend points={trend} patientId={patient.id} />
         </View>
       </Card>
 
@@ -160,6 +211,11 @@ export default function Home() {
         />
       ) : null}
 
+      {/* Doses sit under the forecast because they answer the question the
+          forecast raises: the level is falling, is that the medication wearing
+          off on schedule or is there none on board? */}
+      <DoseCard patientId={patient.id} />
+
       </View>
       <View style={column(wide)}>
 
@@ -169,8 +225,10 @@ export default function Home() {
       </View>
       <View style={column(wide)}>
 
-      {/* Meals beside the check-in rather than below it */}
+      {/* The two things that change how the medication works: what was eaten,
+          and how much the patient moved. */}
       <MealLogCard patientId={patient.id} />
+      <ExerciseLogCard patientId={patient.id} />
 
       </View>
       </View>

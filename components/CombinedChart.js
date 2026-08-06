@@ -2,7 +2,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import Svg, { Circle, Line, Polyline, Rect } from "react-native-svg";
-import { CHART_MAX, RANGE_HIGH, RANGE_LOW } from "../data/history";
+import { CHART_MAX, rangeFor } from "../data/history";
+import { doseKind } from "../data/doseLog";
 import { SYMPTOMS } from "../data/symptoms";
 
 // Levels, reported symptoms and protein load on one time axis.
@@ -48,7 +49,14 @@ function meanScore(entry) {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
-export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
+export default function CombinedChart({
+  readings,
+  checkIns = [],
+  meals = [],
+  doses = [],
+  patientId,
+}) {
+  const { low, high } = rangeFor(patientId);
   const [separate, setSeparate] = useState(false);
   const [open, setOpen] = useState(false);
   // Which column the pointer is over. Also set on press, so it works on a
@@ -56,6 +64,7 @@ export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
   const [hover, setHover] = useState(null);
   const [showLevel, setShowLevel] = useState(true);
   const [showProtein, setShowProtein] = useState(true);
+  const [showDoses, setShowDoses] = useState(true);
   const [shown, setShown] = useState(() => {
     const all = {};
     SYMPTOMS.forEach((s) => {
@@ -96,6 +105,14 @@ export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
   const placedMeals = meals
     .filter((meal) => meal.eatenAt >= cutoff)
     .map((meal) => ({ meal, i: indexForTime(meal.eatenAt) }))
+    .filter((p) => p.i >= 0);
+
+  // Doses on the same axis. A missed dose and a normal pre-dose trough look
+  // identical on the concentration line alone, which is exactly the ambiguity
+  // these markers resolve.
+  const placedDoses = doses
+    .filter((dose) => dose.takenAt >= cutoff)
+    .map((dose) => ({ dose, i: indexForTime(dose.takenAt) }))
     .filter((p) => p.i >= 0);
 
   const levelLine = readings.map((r, i) => `${xAt(i)},${yLevel(r.level)}`).join(" ");
@@ -169,6 +186,12 @@ export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
           colour="#dc2626"
           checked={showProtein}
           onPress={() => setShowProtein(!showProtein)}
+        />
+        <Check
+          label="Doses"
+          colour="#166534"
+          checked={showDoses}
+          onPress={() => setShowDoses(!showDoses)}
         />
       </View>
 
@@ -271,9 +294,9 @@ export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
             <Svg width={width} height={HEIGHT}>
               <Rect
                 x="0"
-                y={yLevel(RANGE_HIGH)}
+                y={yLevel(high)}
                 width={width}
-                height={yLevel(RANGE_LOW) - yLevel(RANGE_HIGH)}
+                height={yLevel(low) - yLevel(high)}
                 fill="#dcfce7"
               />
 
@@ -329,6 +352,27 @@ export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
                         rx="2"
                         fill={PROTEIN_COLOUR[meal.protein] || "#94a3b8"}
                         opacity="0.85"
+                      />
+                    );
+                  })
+                : null}
+
+              {/* Dose markers ride along the top of the plot, clear of the
+                  protein bars on the baseline. A missed dose gets a hollow
+                  marker so it reads as an absence rather than an event. */}
+              {showDoses
+                ? placedDoses.map(({ dose, i }) => {
+                    const kind = doseKind(dose.kind);
+                    const missed = dose.kind === "missed";
+                    return (
+                      <Circle
+                        key={dose.id}
+                        cx={xAt(i)}
+                        cy={PAD_TOP + 7}
+                        r="5"
+                        fill={missed ? "#ffffff" : kind.colour}
+                        stroke={kind.colour}
+                        strokeWidth="2"
                       />
                     );
                   })
@@ -412,8 +456,11 @@ export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
                   (placedCheckIns.find((p) => p.i === hover) || {}).entry || null
                 }
                 meal={(placedMeals.find((p) => p.i === hover) || {}).meal || null}
+                dose={(placedDoses.find((p) => p.i === hover) || {}).dose || null}
                 separate={separate}
                 activeSymptoms={activeSymptoms}
+                low={low}
+                high={high}
               />
             ) : null}
             </View>
@@ -466,13 +513,26 @@ export default function CombinedChart({ readings, checkIns = [], meals = [] }) {
 
 // Details for the hovered column. Flips to the left of the pointer in the last
 // third of the chart so it never runs off the edge.
-function Tooltip({ reading, index, total, checkIn, meal, separate, activeSymptoms }) {
+function Tooltip({
+  reading,
+  index,
+  total,
+  checkIn,
+  meal,
+  dose,
+  separate,
+  activeSymptoms,
+  low,
+  high,
+}) {
   const flip = index > total * 0.66;
   const x = index * STEP + STEP / 2;
+  // The band is judged against this patient's own window, which is passed in
+  // rather than read from a module constant — the two are not the same number.
   const band =
-    reading.level < RANGE_LOW
+    reading.level < low
       ? "Low"
-      : reading.level > RANGE_HIGH
+      : reading.level > high
       ? "High"
       : "In range";
 
@@ -516,6 +576,35 @@ function Tooltip({ reading, index, total, checkIn, meal, separate, activeSymptom
           ng/mL · {band}
         </Text>
       </View>
+
+      {dose ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginTop: 8,
+            paddingTop: 8,
+            borderTopWidth: 1,
+            borderTopColor: "#e2e8f0",
+          }}
+        >
+          <Ionicons
+            name={doseKind(dose.kind).icon}
+            size={14}
+            color={doseKind(dose.kind).colour}
+          />
+          <Text
+            style={{
+              fontSize: 12,
+              color: doseKind(dose.kind).colour,
+              fontWeight: "700",
+              marginLeft: 5,
+            }}
+          >
+            Dose {doseKind(dose.kind).short.toLowerCase()} · {dose.timeLabel}
+          </Text>
+        </View>
+      ) : null}
 
       {checkIn ? (
         <View
