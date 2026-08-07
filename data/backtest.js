@@ -1,4 +1,4 @@
-import { RANGE_LOW, getHistory } from "./history";
+import { getHistory, rangeFor } from "./history";
 
 // Walk-forward backtest of the off-period forecast.
 //
@@ -77,12 +77,15 @@ function fitLogLinear(points) {
 // The forecast, expressed against an explicit list of past readings instead of
 // the clock. `past` is the ONLY data this function can see, which is what makes
 // the leakage guarantee checkable by reading one function.
-function predictFrom(past) {
+// `floor` is the patient's own therapeutic low, passed in rather than read
+// from a module constant: the window is per patient, so a backtest against a
+// fixed 500 would be scoring a model the app no longer ships.
+function predictFrom(past, floor) {
   const latest = past[past.length - 1];
   if (!latest) return { state: "unclear" };
 
   // Already under the floor is a current fact, not a forecast.
-  if (latest.level <= RANGE_LOW) return { state: "already-low" };
+  if (latest.level <= floor) return { state: "already-low" };
 
   // Hourly mock readings are 60 minutes apart, so the 90 minute window holds
   // only two of them and the MIN_POINTS fallback does the real work here. Kept
@@ -99,7 +102,7 @@ function predictFrom(past) {
   if (fit.r2 < MIN_FIT) return { state: "unclear" }; // too scattered to trust
 
   const rate = -fit.slope;
-  const minutes = Math.log(latest.level / RANGE_LOW) / rate;
+  const minutes = Math.log(latest.level / floor) / rate;
   if (!isFinite(minutes) || minutes <= 0) return { state: "unclear" };
 
   return { state: "falling", minutes, fit: fit.r2, at: latest };
@@ -112,15 +115,15 @@ function predictFrom(past) {
 // model assumes; snapping to the next whole hour instead would add up to 60
 // minutes of quantisation error that belongs to the sampling rate, not the model,
 // and would make the model look worse than it is.
-function actualCrossing(readings, from, anchorMinute) {
+function actualCrossing(readings, from, anchorMinute, floor) {
   for (let j = from; j < readings.length; j++) {
-    if (readings[j].level > RANGE_LOW) continue;
+    if (readings[j].level > floor) continue;
 
     const next = readings[j];
     const prev = readings[j - 1]; // always above the floor: j is the first below
     const lnPrev = Math.log(Math.max(prev.level, 1));
     const lnNext = Math.log(Math.max(next.level, 1));
-    const lnFloor = Math.log(RANGE_LOW);
+    const lnFloor = Math.log(floor);
     const span = lnPrev - lnNext;
     const fraction = span === 0 ? 0 : (lnPrev - lnFloor) / span;
     const crossMinute = prev.minute + fraction * (next.minute - prev.minute);
@@ -132,6 +135,7 @@ function actualCrossing(readings, from, anchorMinute) {
 
 export function backtestPatient(patientId) {
   const readings = toTimeline(getHistory(patientId));
+  const { low: floor } = rangeFor(patientId);
 
   const steps = [];
   const declined = { rising: 0, unclear: 0, alreadyLow: 0, beyondHorizon: 0 };
@@ -148,7 +152,7 @@ export function backtestPatient(patientId) {
     // points it was already shown. Every future value below is read only after
     // the prediction exists and only to score it.
     const past = readings.slice(0, i);
-    const forecast = predictFrom(past);
+    const forecast = predictFrom(past, floor);
 
     if (forecast.state !== "falling") {
       declined[forecast.state === "already-low" ? "alreadyLow" : forecast.state]++;
@@ -163,7 +167,7 @@ export function backtestPatient(patientId) {
     }
 
     const anchor = past[past.length - 1];
-    const crossing = actualCrossing(readings, i, anchor.minute);
+    const crossing = actualCrossing(readings, i, anchor.minute, floor);
     if (crossing === null) {
       // Counted, not silently dropped: a run of these means the tail of the
       // history never goes off, which is a fact about the data.
