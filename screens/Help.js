@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useContext, useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import AppointmentNotepad from "../components/AppointmentNotepad";
+import AssistantCard from "../components/AssistantCard";
 import SpeakButton from "../components/SpeakButton";
 import { column, columns, page, useWide } from "../components/layout";
 import { T, sectionLabel } from "../components/theme";
@@ -201,6 +202,12 @@ export default function Help() {
       <View style={columns(wide, 28)}>
         {/* ---------------- Send something ---------------- */}
         <View style={column(wide)}>
+          {/* Answers about the patient's own records, computed on this device.
+              Sits above the message box because most questions people bring
+              here are answerable from their own data and do not need to take up
+              a clinician's time. */}
+          <AssistantCard patientId={patient.id} />
+
           <Text style={sectionLabel(scale)}>Write your own</Text>
 
           {open ? (
