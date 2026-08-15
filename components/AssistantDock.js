@@ -43,7 +43,7 @@ export default function AssistantDock() {
         <Pressable
           onPress={() => setOpen(true)}
           accessibilityRole="button"
-          accessibilityLabel="Open the assistant and ask about your records"
+          accessibilityLabel="Look up something in your records"
           style={{
             flexDirection: "row",
             alignItems: "center",
@@ -116,7 +116,7 @@ export default function AssistantDock() {
             color: "#0f172a",
           }}
         >
-          Assistant
+          Look up my records
         </Text>
         <Pressable
           onPress={() => setOpen(false)}

@@ -198,8 +198,9 @@ export default function AssistantCard({ patientId, embedded = false }) {
           marginTop: 2,
         }}
       >
-        Questions about what you have logged — symptoms, doses, meals, activity.
-        It cannot give medical advice.
+        Looks things up in what you have logged — symptoms, doses, meals,
+        activity. It is not a doctor: it cannot tell you what a symptom means,
+        what is causing it, or what to do about it.
       </Text>
 
       {/* Which engine is answering, always visible */}

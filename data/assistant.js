@@ -33,22 +33,79 @@ const DOWNLOADABLE = "downloadable";
 const UNAVAILABLE = "unavailable";
 
 // Questions that must never reach a language model, however well prompted.
-// Dosing is the category where a plausible-sounding wrong answer does real
-// harm, so it is intercepted before inference rather than corrected after.
-const UNSAFE_PATTERNS = [
-  /\b(should|shall|can|could|may|do)\s+i\s+(take|skip|stop|start|increase|decrease|double|change|adjust|split)\b/i,
-  /\b(increase|decrease|raise|lower|double|halve|stop|skip|adjust|change)\s+(my|the|his|her|their)?\s*(dose|dosage|medication|levodopa|sinemet|madopar|tablet)/i,
-  /\bhow (much|many)\s+(should|do)\s+i\s+take\b/i,
-  /\bis it (safe|ok|okay|fine) to (take|skip|stop|double)\b/i,
-  /\b(diagnos|prescrib)/i,
+//
+// This assistant is a support tool, not a clinician. It reads back what the
+// patient recorded. It does not interpret, explain, diagnose, predict, or
+// advise — and the boundary is enforced here rather than left to a prompt,
+// because a fluent wrong answer in this domain does real harm.
+//
+// Two categories, because they deserve different replies. Being told "I can't
+// discuss your medication" when you asked whether your tremor is getting worse
+// is a non-sequitur, and a support tool that answers the wrong question is one
+// people stop trusting.
+
+// 1. Medication. The category where a plausible wrong answer is most dangerous.
+const MEDICATION_PATTERNS = [
+  /\b(should|shall|can|could|may|do|would)\s+i\s+(take|skip|stop|start|increase|decrease|double|change|adjust|split|delay)\b/i,
+  /\b(increase|decrease|raise|lower|double|halve|stop|skip|adjust|change|switch)\s+(my|the|his|her|their)?\s*(dose|dosage|medication|levodopa|sinemet|madopar|tablet|pill)/i,
+  /\bhow (much|many)\s+(should|do|can)\s+i\s+take\b/i,
+  /\bis it (safe|ok|okay|fine|alright) to (take|skip|stop|double|delay)\b/i,
+  /\b(prescrib|dosage)/i,
 ];
 
-const REFUSAL =
-  "I can't help with anything about changing your medication — not the dose, " +
-  "the timing, or whether to skip one. That has to come from your care team, " +
-  "who can see your full history and examine you. You can send them a message " +
-  "from this screen, or write the question down for your next appointment.\n\n" +
-  "I can tell you what your own records show, if that helps.";
+// 2. Clinical interpretation: diagnosis, causation, prognosis, significance,
+// and whether to seek care. All of it belongs to a clinician who can examine
+// the person and see their full history.
+const CLINICAL_PATTERNS = [
+  /\bdo i have\b/i,
+  /\bdiagnos/i,
+  /\bis (this|that|it|my|there) (normal|serious|bad|dangerous|concerning|expected|a sign|a symptom|something)\b/i,
+  /\bwhat (is|are|could be|might be|would be)\s+(causing|the cause|wrong|happening)\b/i,
+  /\bwhat (does|do)\b[^?]*\bmean\b/i,
+  /\bwhy (am|do|is|are|does)\s+(i|my|me)\b/i,
+  /\b(getting|going to get|going to be|becoming)\s+(worse|better)\b/i,
+  /\b(progress(ion|ing)?|prognosis|life expectancy|how long (do|have) i)\b/i,
+  /\bshould i (see|call|contact|visit|tell|worry|be worried|be concerned)\b/i,
+  /\bside.?effect/i,
+  /\b(treatment|therapy|surgery|operation|supplement|vitamin|remedy|cure)\b/i,
+  /\b(is|am|are) (this|that|it|i|my)\b[^?]*\b(parkinson|dementia|stroke|depress)/i,
+  /\bam i (developing|getting)\b/i,
+];
+
+const PARAGRAPH = "\n\n";
+
+const REFUSAL_MEDICATION =
+  "I can't help with anything about your medication — not the dose, the " +
+  "timing, or whether to skip one. That has to come from your care team, who " +
+  "can see your full history and examine you. You can send them a message " +
+  "from the Help screen, or write the question down for your next " +
+  "appointment." +
+  PARAGRAPH +
+  "I can tell you what your own records show, if that would help.";
+
+const REFUSAL_CLINICAL =
+  "That's a question for your care team, not for me. I'm a place to look up " +
+  "what you've written down — I can't tell you what a symptom means, what's " +
+  "causing it, whether it's normal, or what's likely to happen next. I'm not " +
+  "a doctor, and I'd be guessing." +
+  PARAGRAPH +
+  "It's worth asking, though. There's a notepad on the Help screen for " +
+  "questions to raise at your next appointment, and you can message your care " +
+  "team from there too." +
+  PARAGRAPH +
+  "What I can do is read your own entries back to you — symptoms, doses, " +
+  "meals and activity.";
+
+// Which boundary a question crosses, or null if it crosses neither.
+export function refusalFor(question) {
+  if (MEDICATION_PATTERNS.some((re) => re.test(question))) {
+    return REFUSAL_MEDICATION;
+  }
+  if (CLINICAL_PATTERNS.some((re) => re.test(question))) {
+    return REFUSAL_CLINICAL;
+  }
+  return null;
+}
 
 // Reference to whichever shape of the API this browser exposes. The Prompt API
 // moved from `window.ai.languageModel` to a global `LanguageModel` during its
@@ -98,12 +155,15 @@ export async function availability() {
 // is a reader of one person's records, not a source of medical knowledge.
 function systemPrompt(context) {
   return [
-    "You are a calm, plain-spoken assistant inside a Parkinson's tracking app.",
-    "You may ONLY answer using the RECORDS below. They are this patient's own entries.",
+    "You are a calm, plain-spoken lookup tool inside a Parkinson's tracking app.",
+    "You are NOT a doctor, nurse or clinician, and must never speak as one.",
+    "Your only job is to read back what the RECORDS below already say.",
+    "They are this patient's own entries. You have no other knowledge.",
     "",
     "Rules you must never break:",
     "1. Never advise on medication — not dose, timing, skipping, starting or stopping.",
-    "2. Never diagnose, and never predict the course of the disease.",
+    "2. Never diagnose. Never say what a symptom means, what is causing it,",
+    "   whether it is normal or serious, or what is likely to happen next.",
     "3. If the RECORDS do not contain the answer, say plainly that you cannot see it.",
     "4. Never invent a number. Every figure you give must appear in the RECORDS.",
     "5. Keep it under 90 words. Short sentences. No lists unless asked.",
@@ -209,33 +269,38 @@ function plural(n, word) {
 }
 
 export function isUnsafe(question) {
-  return UNSAFE_PATTERNS.some((re) => re.test(question));
+  return refusalFor(question) !== null;
 }
 
-export { REFUSAL };
+export { REFUSAL_MEDICATION, REFUSAL_CLINICAL };
 
 // Output guard. The system prompt is a request, not a guarantee, so anything
 // that slipped through and reads like a dosing instruction is discarded and
 // replaced with the refusal rather than shown.
+// Output guard. The system prompt is a request, not a guarantee, so anything
+// that came back sounding like a clinician is discarded regardless of what the
+// model was told.
+//
+// Two families, matching the two refusal categories: instructions about
+// medication, and interpretation of what the records mean. The second is the
+// easier one to slip into — "your stiffness suggests" is a natural sentence for
+// a language model to produce and a diagnosis for a patient to read.
 const OUTPUT_RED_FLAGS = [
-  /\byou should (take|skip|stop|increase|decrease|double|change)\b/i,
+  // Medication instructions
+  /\byou should (take|skip|stop|increase|decrease|double|change|adjust)\b/i,
   /\btake (an?|another|one|two|\d)\s*(extra|additional)?\s*(dose|tablet|pill)\b/i,
-  /\b(increase|decrease|reduce|raise|lower) your (dose|dosage|medication)\b/i,
+  /\b(increase|decrease|reduce|raise|lower|adjust) your (dose|dosage|medication)\b/i,
+  /\b\d+\s*(mg|milligram)/i,
+
+  // Clinical interpretation
+  /\b(suggests?|indicates?|means that|is a sign of|consistent with|points to)\b/i,
+  /\byou (may|might|could|probably|likely) (have|be experiencing|be developing)\b/i,
+  /\b(this|that|it) (is|could be|may be|might be) (caused by|due to|because of)\b/i,
+  /\byour (condition|disease|parkinson)[^.]{0,24}(is|has been) (worsening|progressing|improving)\b/i,
+  /\byou should (see|call|contact|consult|visit) (a|your) (doctor|neurologist|gp)\b/i,
+  /\bdiagnos/i,
 ];
 
-// Rule 4 of the system prompt says "never invent a number". A prompt rule is a
-// request, so it is also enforced here as code.
-//
-// Every digit run in the answer must appear as a digit run in the digest the
-// model was given. A small model asked to restate figures will happily produce
-// "2 days of 7 days of 135 minutes" — fluent, confident, and wrong about the
-// patient's own records. In a health context a fabricated figure is worse than
-// no answer, so a failed check discards the generation entirely and the
-// deterministic responder answers instead.
-//
-// Deliberately strict: any unmatched number fails the whole answer rather than
-// being edited out, because a sentence with a number silently removed reads as
-// authoritative while meaning something different.
 function numbersAreGrounded(text, context) {
   const inContext = new Set((context.match(/\d+(?:\.\d+)?/g) || []));
   const inAnswer = text.match(/\d+(?:\.\d+)?/g) || [];
@@ -246,7 +311,10 @@ function guardOutput(text, context) {
   if (!text) return null;
   const trimmed = text.trim();
   if (!trimmed) return null;
-  if (OUTPUT_RED_FLAGS.some((re) => re.test(trimmed))) return REFUSAL;
+  // A generation that crossed the line is discarded outright rather than
+  // swapped for a refusal: the patient asked something answerable, so they
+  // get the deterministic answer, not a lecture about boundaries.
+  if (OUTPUT_RED_FLAGS.some((re) => re.test(trimmed))) return null;
   if (context && !numbersAreGrounded(trimmed, context)) return null;
   return trimmed;
 }
@@ -325,8 +393,9 @@ export function ruleAnswer(question, summary) {
 // is answering, is precisely the class of dishonesty this codebase avoids
 // elsewhere. A swallowed exception here would have shipped that.
 export async function ask(patientId, question, onToken) {
-  if (isUnsafe(question)) {
-    return { text: REFUSAL, engine: "refusal", degraded: false };
+  const refusal = refusalFor(question);
+  if (refusal) {
+    return { text: refusal, engine: "refusal", degraded: false };
   }
 
   const { text: context, summary } = await buildContext(patientId);
