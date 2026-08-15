@@ -307,16 +307,33 @@ function numbersAreGrounded(text, context) {
   return inAnswer.every((n) => inContext.has(n));
 }
 
+// Returns { text } when the generation is safe to show, or { reason } naming
+// why it was discarded. The reason is displayed, so it has to say which check
+// actually failed rather than guessing — a generation rejected for sounding
+// like a diagnosis is a different fault from one that invented a number, and
+// reporting the wrong one would be its own small dishonesty.
 function guardOutput(text, context) {
-  if (!text) return null;
-  const trimmed = text.trim();
-  if (!trimmed) return null;
+  const trimmed = (text || "").trim();
+  if (!trimmed) return { reason: "The model returned nothing." };
+
   // A generation that crossed the line is discarded outright rather than
   // swapped for a refusal: the patient asked something answerable, so they
   // get the deterministic answer, not a lecture about boundaries.
-  if (OUTPUT_RED_FLAGS.some((re) => re.test(trimmed))) return null;
-  if (context && !numbersAreGrounded(trimmed, context)) return null;
-  return trimmed;
+  if (OUTPUT_RED_FLAGS.some((re) => re.test(trimmed))) {
+    return {
+      reason:
+        "The model started interpreting rather than reporting, so its answer was discarded.",
+    };
+  }
+
+  if (context && !numbersAreGrounded(trimmed, context)) {
+    return {
+      reason:
+        "The model quoted a figure that is not in your records, so its answer was discarded.",
+    };
+  }
+
+  return { text: trimmed };
 }
 
 // Deterministic answers, used when no on-device model exists and as the source
@@ -413,9 +430,10 @@ export async function ask(patientId, question, onToken) {
         onToken
       );
       const guarded = guardOutput(text, context);
-      if (guarded) return { text: guarded, engine: "webllm", degraded: false };
-      degraded =
-        "The model's answer quoted a figure that is not in your records, so it was discarded.";
+      if (guarded.text) {
+        return { text: guarded.text, engine: "webllm", degraded: false };
+      }
+      degraded = guarded.reason;
     } catch (error) {
       degraded = `On-device model failed: ${String(error?.message || error).slice(0, 120)}`;
     }
@@ -454,8 +472,10 @@ export async function ask(patientId, question, onToken) {
     }
 
     const guarded = guardOutput(full, context);
-    if (guarded) return { text: guarded, engine: "prompt-api", degraded };
-    return { text: fallback, engine: "rules", degraded };
+    if (guarded.text) {
+      return { text: guarded.text, engine: "prompt-api", degraded };
+    }
+    return { text: fallback, engine: "rules", degraded: degraded || guarded.reason };
   } catch (error) {
     return {
       text: fallback,
