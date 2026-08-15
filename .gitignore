@@ -35,3 +35,7 @@ docs/
 
 # local tooling — never commit
 .claude/
+
+# Secrets. .env.example is the committed template.
+.env
+.env.local
