@@ -1,4 +1,4 @@
-import { getTodayTrend, rangeFor } from "./history";
+import { DOSE_HOURS, getTodayTrend, rangeFor } from "./history";
 
 // Estimates when the level will fall through the therapeutic floor.
 //
@@ -12,16 +12,30 @@ import { getTodayTrend, rangeFor } from "./history";
 // estimate would swing wildly between readings. A least-squares fit over ~90
 // minutes averages the noise out, and the fit quality (r²) gives an honest
 // signal for when the data is too messy to say anything at all.
-const WINDOW_MINUTES = 90;
-const MIN_POINTS = 4;
-const MIN_FIT = 0.6; // below this the readings are too scattered to trust
+export const WINDOW_MINUTES = 90;
+export const MIN_POINTS = 4;
+export const MIN_FIT = 0.6; // below this the readings are too scattered to trust
 
-export function forecastOff(patientId) {
-  // The floor is this patient's own, not a fixed 500. Forecasting against the
-  // wrong floor would tell someone with a lower window that they are about to
-  // go off when they are not, and vice versa.
-  const { low: floor } = rangeFor(patientId);
-  const points = getTodayTrend(patientId);
+// Beyond this the next dose has landed and any figure is fiction.
+export const HORIZON_MINUTES = 240;
+
+// THE PURE CORE
+//
+// Everything the model actually does lives here, as a function of its inputs
+// and nothing else. No clock, no storage, no patient lookup.
+//
+// This shape exists because the backtest used to carry its own copy of the
+// maths. `forecastOff` reads the wall clock, so the same call returned
+// different points at 9am and 9pm and could not be scored reproducibly — the
+// backtest duplicated the fit and carried a comment warning that the two must
+// be changed together or it would be validating a model that no longer ships.
+// That warning is the kind that gets missed. Now both call this.
+//
+//   points        — [{ minute, level }], oldest first, one patient's trace
+//   floor         — this patient's therapeutic low
+//   nextDoseIn    — minutes until the next dose is expected, or null if none
+//                   is coming (all remaining doses already logged as missed)
+export function solveOffPeriod({ points, floor, nextDoseIn = null }) {
   const latest = points[points.length - 1];
   if (!latest) return { state: "unclear" };
 
@@ -54,6 +68,27 @@ export function forecastOff(patientId) {
   const minutes = Math.log(latest.level / floor) / rate;
   if (!isFinite(minutes) || minutes <= 0) return { state: "unclear" };
 
+  // THE DOSE GATE
+  //
+  // The decay is real, but a scheduled dose landing first makes the projected
+  // crossing never happen — the level turns upward instead. Extrapolating
+  // through a dose is the single largest source of error in this model, and
+  // reporting "2 hours until you go off" when a dose arrives in 40 minutes is
+  // worse than saying nothing: it is confidently wrong about the one thing the
+  // patient would act on.
+  //
+  // So the model declines rather than guesses. It is the same instinct as the
+  // r² gate — the difference between not knowing and pretending.
+  if (nextDoseIn != null && nextDoseIn < minutes) {
+    return {
+      state: "dose-first",
+      level: latest.level,
+      minutes: Math.round(minutes),
+      nextDoseIn: Math.round(nextDoseIn),
+      fit: fit.r2,
+    };
+  }
+
   // A point estimate would imply precision the fit does not have, so widen it
   // as confidence drops.
   const spread = Math.max(0.15, 1 - fit.r2);
@@ -65,15 +100,50 @@ export function forecastOff(patientId) {
     low: Math.round(minutes * (1 - spread)),
     high: Math.round(minutes * (1 + spread)),
     fit: fit.r2,
-    // Beyond about four hours the next dose will have landed, so any figure is
-    // fiction.
-    confident: minutes < 240,
+    confident: minutes < HORIZON_MINUTES,
   };
+}
+
+// Minutes until the next dose the patient is expected to take.
+//
+// A scheduled dose only counts if it has not already been answered. One logged
+// as MISSED means nothing is coming at that time, so the decay continues
+// uninterrupted and the model should extrapolate straight through it — which
+// is exactly the case a schedule-only version would get wrong.
+//
+// Returns null when no further dose is expected today.
+export function nextDoseIn(minuteOfDay, dosesToday = [], schedule = DOSE_HOURS) {
+  const answered = new Set(
+    dosesToday
+      .filter((d) => d.scheduledHour != null && d.kind !== "rescue")
+      .map((d) => d.scheduledHour)
+  );
+
+  const upcoming = schedule
+    .filter((hour) => !answered.has(hour))
+    .map((hour) => hour * 60 - minuteOfDay)
+    .filter((delta) => delta > 0);
+
+  return upcoming.length ? Math.min(...upcoming) : null;
+}
+
+// Wall-clock wrapper. Reads the patient's window, today's trace and today's
+// dose log, then hands them to the pure core.
+export function forecastOff(patientId, dosesToday = [], now = new Date()) {
+  const { low: floor } = rangeFor(patientId);
+  const points = getTodayTrend(patientId, now);
+  const minuteOfDay = now.getHours() * 60 + now.getMinutes();
+
+  return solveOffPeriod({
+    points,
+    floor,
+    nextDoseIn: nextDoseIn(minuteOfDay, dosesToday),
+  });
 }
 
 // Least-squares fit of ln(level) against time, returning the slope and how well
 // the line actually describes the points.
-function fitLogLinear(points) {
+export function fitLogLinear(points) {
   const n = points.length;
   const xs = points.map((p) => p.minute);
   const ys = points.map((p) => Math.log(Math.max(p.level, 1)));
@@ -142,6 +212,15 @@ export function describeForecast(forecast) {
               "Your level is falling, but not soon enough to estimate a time.",
             tone: "calm",
           };
+    case "dose-first":
+      return {
+        headline: `Your next dose comes first`,
+        detail:
+          `Your level is falling, but the next dose is due in about ` +
+          `${duration(forecast.nextDoseIn)} — before it would reach your range. ` +
+          `Nothing to plan around.`,
+        tone: "good",
+      };
     case "rising":
       return {
         headline: "Climbing",

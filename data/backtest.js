@@ -1,4 +1,5 @@
-import { getHistory, rangeFor } from "./history";
+import { DOSE_HOURS, getHistory, rangeFor } from "./history";
+import { HORIZON_MINUTES, MIN_POINTS, nextDoseIn, solveOffPeriod } from "./forecast";
 
 // Walk-forward backtest of the off-period forecast.
 //
@@ -8,25 +9,14 @@ import { getHistory, rangeFor } from "./history";
 // what was predicted and what happened, measured over every moment in the history
 // where the model was willing to commit to a number.
 //
-// WHY THE FIT IS DUPLICATED HERE RATHER THAN IMPORTED
-// forecastOff() in ./forecast reads getTodayTrend(), which slices midnight->now
-// using the wall clock. That makes it untestable: the same call returns different
-// points at 9am and 9pm, so a backtest built on it would produce a different
-// number every time it ran and could never be reproduced or quoted. So the maths
-// below is a copy of the same model — least squares on ln(level), the same 90
-// minute window, the same MIN_POINTS floor, the same r-squared gate, the same
-// refusal on a rising or flat trend — run against the fixed hourly getHistory
-// data instead. Same model, deterministic input. If forecast.js changes its
-// maths, these constants have to be changed to match or the backtest is
-// validating a model that no longer ships.
-const WINDOW_MINUTES = 90;
-const MIN_POINTS = 4;
-const MIN_FIT = 0.6;
-
-// Beyond four hours the next dose has landed, so forecast.js stops showing a
-// figure. A backtest of "when the model said N minutes" must not score numbers
-// the model never actually said out loud.
-const HORIZON_MINUTES = 240;
+// IT CALLS THE SHIPPED SOLVER
+// This file used to carry its own copy of the fit, because forecastOff() reads
+// the wall clock and could not be scored reproducibly. That copy came with a
+// comment warning that both must be changed together or the backtest would be
+// validating a model that no longer ships — a warning of exactly the kind that
+// gets missed. forecast.js now exposes solveOffPeriod(), a pure function of its
+// inputs, and this file calls it. There is one implementation of the maths, and
+// these numbers describe the code that actually runs.
 
 // Errors under this count as a hit. Half an hour is roughly the window in which
 // a patient could still take a dose early and act on the warning usefully.
@@ -45,67 +35,6 @@ function toTimeline(readings) {
     const dayIndex = days.indexOf(reading.day);
     return { ...reading, minute: dayIndex * 24 * 60 + reading.hour * 60 };
   });
-}
-
-// Least-squares fit of ln(level) against time. Identical to forecast.js.
-function fitLogLinear(points) {
-  const n = points.length;
-  const xs = points.map((p) => p.minute);
-  const ys = points.map((p) => Math.log(Math.max(p.level, 1)));
-
-  const meanX = xs.reduce((a, b) => a + b, 0) / n;
-  const meanY = ys.reduce((a, b) => a + b, 0) / n;
-
-  let sxy = 0;
-  let sxx = 0;
-  let syy = 0;
-  for (let i = 0; i < n; i++) {
-    const dx = xs[i] - meanX;
-    const dy = ys[i] - meanY;
-    sxy += dx * dy;
-    sxx += dx * dx;
-    syy += dy * dy;
-  }
-
-  if (sxx === 0) return null;
-  return {
-    slope: sxy / sxx,
-    r2: syy === 0 ? 0 : (sxy * sxy) / (sxx * syy),
-  };
-}
-
-// The forecast, expressed against an explicit list of past readings instead of
-// the clock. `past` is the ONLY data this function can see, which is what makes
-// the leakage guarantee checkable by reading one function.
-// `floor` is the patient's own therapeutic low, passed in rather than read
-// from a module constant: the window is per patient, so a backtest against a
-// fixed 500 would be scoring a model the app no longer ships.
-function predictFrom(past, floor) {
-  const latest = past[past.length - 1];
-  if (!latest) return { state: "unclear" };
-
-  // Already under the floor is a current fact, not a forecast.
-  if (latest.level <= floor) return { state: "already-low" };
-
-  // Hourly mock readings are 60 minutes apart, so the 90 minute window holds
-  // only two of them and the MIN_POINTS fallback does the real work here. Kept
-  // in this shape anyway so the behaviour matches forecast.js exactly if the
-  // sampling rate ever gets finer.
-  const inWindow = past.filter((p) => latest.minute - p.minute <= WINDOW_MINUTES);
-  const window =
-    inWindow.length >= MIN_POINTS ? inWindow : past.slice(-MIN_POINTS);
-  if (window.length < MIN_POINTS) return { state: "unclear" };
-
-  const fit = fitLogLinear(window);
-  if (!fit) return { state: "unclear" };
-  if (fit.slope >= 0) return { state: "rising" }; // cannot extrapolate downwards
-  if (fit.r2 < MIN_FIT) return { state: "unclear" }; // too scattered to trust
-
-  const rate = -fit.slope;
-  const minutes = Math.log(latest.level / floor) / rate;
-  if (!isFinite(minutes) || minutes <= 0) return { state: "unclear" };
-
-  return { state: "falling", minutes, fit: fit.r2, at: latest };
 }
 
 // When did the level ACTUALLY cross the floor, looking only forward from `from`?
@@ -138,7 +67,13 @@ export function backtestPatient(patientId) {
   const { low: floor } = rangeFor(patientId);
 
   const steps = [];
-  const declined = { rising: 0, unclear: 0, alreadyLow: 0, beyondHorizon: 0 };
+  const declined = {
+    rising: 0,
+    unclear: 0,
+    alreadyLow: 0,
+    beyondHorizon: 0,
+    doseFirst: 0,
+  };
   let noCrossingAhead = 0;
 
   // i is an exclusive upper bound: everything before it is the past, everything
@@ -152,10 +87,26 @@ export function backtestPatient(patientId) {
     // points it was already shown. Every future value below is read only after
     // the prediction exists and only to score it.
     const past = readings.slice(0, i);
-    const forecast = predictFrom(past, floor);
+    const anchorMinute = past[past.length - 1].minute;
+
+    // Minutes until the next scheduled dose, measured on the same synthetic
+    // clock the readings use. The mock history has no dose log, so the schedule
+    // alone drives this — which is the pessimistic case: a real patient's
+    // missed-dose entries would let the model extrapolate straight through a
+    // dose that never arrives, and it would score better, not worse.
+    const minuteOfDay = anchorMinute % (24 * 60);
+    const doseIn = nextDoseIn(minuteOfDay, [], DOSE_HOURS);
+
+    const forecast = solveOffPeriod({ points: past, floor, nextDoseIn: doseIn });
 
     if (forecast.state !== "falling") {
-      declined[forecast.state === "already-low" ? "alreadyLow" : forecast.state]++;
+      const bucket =
+        forecast.state === "already-low"
+          ? "alreadyLow"
+          : forecast.state === "dose-first"
+            ? "doseFirst"
+            : forecast.state;
+      declined[bucket]++;
       continue;
     }
 
@@ -167,7 +118,7 @@ export function backtestPatient(patientId) {
     }
 
     const anchor = past[past.length - 1];
-    const crossing = actualCrossing(readings, i, anchor.minute, floor);
+    const crossing = actualCrossing(readings, i, anchorMinute, floor);
     if (crossing === null) {
       // Counted, not silently dropped: a run of these means the tail of the
       // history never goes off, which is a fact about the data.
@@ -223,6 +174,15 @@ export function backtestAll() {
       ...summarise(pooled),
       declined: sum(patients.map((p) => p.declined)),
       noCrossingAhead: sum(patients.map((p) => p.noCrossingAhead)),
+      // Pooled so the cost of the dose gate is legible: it buys accuracy by
+      // declining more often, and the reader should be able to see both halves
+      // of that trade rather than only the improved median.
+      declinedReasons: patients.reduce((acc, p) => {
+        Object.entries(p.declinedReasons).forEach(([k, v]) => {
+          acc[k] = (acc[k] || 0) + v;
+        });
+        return acc;
+      }, {}),
     },
   };
 }

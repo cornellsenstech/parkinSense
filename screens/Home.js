@@ -19,6 +19,7 @@ import {
   trendDirection,
 } from "../data/history";
 import { describeForecast, forecastOff } from "../data/forecast";
+import { dosesToday, loadDoses } from "../data/doseLog";
 import { patients } from "../data/patients";
 import { defaultProfile, displayFirstName, loadProfile } from "../data/profile";
 import { RoleContext } from "../context/RoleContext";
@@ -66,7 +67,21 @@ export default function Home() {
   const greetName = displayFirstName(profile, reporter) || firstName;
 
   const trend = getTodayTrend(patient.id);
-  const forecast = describeForecast(forecastOff(patient.id));
+  // Today's dose log feeds the forecast so it can decline when a scheduled dose
+  // lands before the projected off-period. Without it the model extrapolates
+  // through a dose it cannot see, which was the single largest source of error.
+  const [doses, setDoses] = useState([]);
+  useEffect(() => {
+    let active = true;
+    loadDoses(patient.id).then((list) => {
+      if (active) setDoses(list);
+    });
+    return () => {
+      active = false;
+    };
+  }, [patient.id]);
+
+  const forecast = describeForecast(forecastOff(patient.id, dosesToday(doses)));
 
   // The window is this patient's, not a fixed 500-1500 — it narrows with
   // disease duration and with dyskinesia, so showing everyone the same band
