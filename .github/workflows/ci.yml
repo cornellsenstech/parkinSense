@@ -1,0 +1,49 @@
+name: CI
+
+# Runs on every push and pull request to main. The two test scripts are plain
+# node — no test runner, no browser — so this finishes in well under a minute
+# and gives a definite answer rather than a flaky one.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Tests and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      # `npm ci` installs exactly what the lockfile pins and fails if
+      # package.json and the lockfile disagree, which `npm install` would
+      # quietly fix. On CI that disagreement is the thing worth catching.
+      - name: Install
+        run: npm ci
+
+      # The boundary between "reads your records" and "gives medical advice".
+      # If this fails the assistant is answering questions it must refuse, so it
+      # runs before anything else.
+      - name: Assistant safety boundary
+        run: npm run test:assistant
+
+      - name: Data layer
+        run: npm run test:data
+
+      # Not a pass/fail gate — the forecast's accuracy is a measurement, not an
+      # assertion, and pinning it to a threshold would mean either a brittle
+      # test or a meaningless one. Printed into the job log so a regression in
+      # the median is visible in the diff between two runs.
+      - name: Forecast backtest (reported, not gated)
+        run: npm run backtest
+
+      # Catches anything that breaks the bundler but not the node scripts:
+      # a bad import path, a syntax error in a screen, a missing dependency.
+      - name: Web build
+        run: npx expo export -p web

@@ -9,7 +9,11 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test:assistant": "node scripts/test-assistant-boundary.mjs"
+    "test:assistant": "node scripts/test-assistant-boundary.mjs",
+    "test:data": "node scripts/test-data-layer.mjs",
+    "test": "npm run test:assistant && npm run test:data",
+    "backtest": "node scripts/backtest-forecast.mjs",
+    "backtest:baseline": "node scripts/backtest-forecast.mjs --no-dose-gate"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
