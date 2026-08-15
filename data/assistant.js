@@ -5,6 +5,7 @@ import { getHistory, rangeFor } from "./history";
 import { loadMeals, proteinLabel } from "./mealLog";
 import { chronological, loadEntries } from "./symptomLog";
 import { SYMPTOMS, migrateScores } from "./symptoms";
+import * as webllm from "./webllm";
 import { notablePoints, weeklySummary } from "./weekly";
 
 // An on-device language model that answers questions about the patient's own
@@ -222,10 +223,32 @@ const OUTPUT_RED_FLAGS = [
   /\b(increase|decrease|reduce|raise|lower) your (dose|dosage|medication)\b/i,
 ];
 
-function guardOutput(text) {
+// Rule 4 of the system prompt says "never invent a number". A prompt rule is a
+// request, so it is also enforced here as code.
+//
+// Every digit run in the answer must appear as a digit run in the digest the
+// model was given. A small model asked to restate figures will happily produce
+// "2 days of 7 days of 135 minutes" — fluent, confident, and wrong about the
+// patient's own records. In a health context a fabricated figure is worse than
+// no answer, so a failed check discards the generation entirely and the
+// deterministic responder answers instead.
+//
+// Deliberately strict: any unmatched number fails the whole answer rather than
+// being edited out, because a sentence with a number silently removed reads as
+// authoritative while meaning something different.
+function numbersAreGrounded(text, context) {
+  const inContext = new Set((context.match(/\d+(?:\.\d+)?/g) || []));
+  const inAnswer = text.match(/\d+(?:\.\d+)?/g) || [];
+  return inAnswer.every((n) => inContext.has(n));
+}
+
+function guardOutput(text, context) {
   if (!text) return null;
-  if (OUTPUT_RED_FLAGS.some((re) => re.test(text))) return REFUSAL;
-  return text.trim();
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (OUTPUT_RED_FLAGS.some((re) => re.test(trimmed))) return REFUSAL;
+  if (context && !numbersAreGrounded(trimmed, context)) return null;
+  return trimmed;
 }
 
 // Deterministic answers, used when no on-device model exists and as the source
@@ -278,22 +301,66 @@ export function ruleAnswer(question, summary) {
   return "I can answer questions about your check-ins, doses, meals, activity and levels. Try asking what has changed this week.";
 }
 
-// Ask the on-device model, streaming tokens back through `onToken`. Returns the
-// final text. Falls back to the rule-based answer on any failure, so the panel
-// always produces something.
+// Ask an on-device model, streaming tokens back through `onToken`. Returns the
+// final text.
+//
+// Three engines are tried in order of quality, and every one of them sits
+// behind the same three safety layers. The engine can change without the safety
+// behaviour changing, which is the point of putting the filters here rather
+// than inside any single engine's wrapper.
+//
+//   1. WebLLM on WebGPU — best answers, but only once the user has explicitly
+//      accepted the weight download.
+//   2. Chrome's built-in Prompt API — no download, narrower availability.
+//   3. The deterministic responder — always works, never wrong, reads stiffly.
+//
+// Whatever answers, the figures come from the same digest, so the three cannot
+// contradict each other on a number.
+// Returns { text, engine, degraded }. `engine` names what actually produced the
+// answer, which the panel displays.
+//
+// Reporting the engine is not a debugging convenience — it is the same
+// commitment the rest of the app makes about the sensor feed. Quietly dropping
+// from a language model to a template, while the interface still claims a model
+// is answering, is precisely the class of dishonesty this codebase avoids
+// elsewhere. A swallowed exception here would have shipped that.
 export async function ask(patientId, question, onToken) {
-  if (isUnsafe(question)) return REFUSAL;
+  if (isUnsafe(question)) {
+    return { text: REFUSAL, engine: "refusal", degraded: false };
+  }
 
   const { text: context, summary } = await buildContext(patientId);
   const fallback = ruleAnswer(question, summary);
+  let degraded = null;
+
+  // Engine 1: WebLLM, if the user has loaded it in this session.
+  if (webllm.ready()) {
+    try {
+      const text = await webllm.generate(
+        [
+          { role: "system", content: systemPrompt(context) },
+          { role: "user", content: question },
+        ],
+        onToken
+      );
+      const guarded = guardOutput(text, context);
+      if (guarded) return { text: guarded, engine: "webllm", degraded: false };
+      degraded =
+        "The model's answer quoted a figure that is not in your records, so it was discarded.";
+    } catch (error) {
+      degraded = `On-device model failed: ${String(error?.message || error).slice(0, 120)}`;
+    }
+  }
 
   const lm = api();
-  if (!lm) return fallback;
+  if (!lm) return { text: fallback, engine: "rules", degraded };
 
   let session;
   try {
     const { state } = await availability();
-    if (state !== AVAILABLE && state !== DOWNLOADABLE) return fallback;
+    if (state !== AVAILABLE && state !== DOWNLOADABLE) {
+      return { text: fallback, engine: "rules", degraded };
+    }
 
     session = await lm.create({
       // Both spellings, since the option was renamed mid-trial.
@@ -303,9 +370,9 @@ export async function ask(patientId, question, onToken) {
       topK: 3,
     });
 
+    let full = "";
     if (typeof session.promptStreaming === "function") {
       const stream = session.promptStreaming(question);
-      let full = "";
       for await (const chunk of stream) {
         // Older builds emit the whole string so far; newer ones emit deltas.
         full = chunk.length >= full.length && chunk.startsWith(full.slice(0, 8))
@@ -313,13 +380,21 @@ export async function ask(patientId, question, onToken) {
           : full + chunk;
         onToken?.(full);
       }
-      return guardOutput(full) || fallback;
+    } else {
+      full = await session.prompt(question);
     }
 
-    const once = await session.prompt(question);
-    return guardOutput(once) || fallback;
-  } catch {
-    return fallback;
+    const guarded = guardOutput(full, context);
+    if (guarded) return { text: guarded, engine: "prompt-api", degraded };
+    return { text: fallback, engine: "rules", degraded };
+  } catch (error) {
+    return {
+      text: fallback,
+      engine: "rules",
+      degraded:
+        degraded ||
+        `Built-in model failed: ${String(error?.message || error).slice(0, 120)}`,
+    };
   } finally {
     try {
       session?.destroy?.();

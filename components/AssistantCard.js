@@ -1,112 +1,223 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useContext, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { AccessibilityContext } from "../context/AccessibilityContext";
 import { SUGGESTIONS, availability, ask } from "../data/assistant";
+import * as webllm from "../data/webllm";
 
-// Ask-your-records panel, backed by an on-device language model.
+// Ask-your-records panel.
 //
-// The status line is not decoration. A patient is entitled to know whether the
-// thing answering them is running on their own machine, and the three states —
-// on-device model ready, model downloading, no model so answering from the
-// records directly — are visibly different rather than silently interchangeable.
-export default function AssistantCard({ patientId }) {
+// The engine ladder is visible rather than hidden. A patient is entitled to
+// know whether the thing answering them is a language model on their own GPU,
+// a smaller built-in one, or their records read back directly — and a
+// several-hundred-megabyte download is never started without them asking for it.
+const ENGINE_LABEL = {
+  webllm: "Written by the on-device model from your own entries.",
+  "prompt-api": "Written by this browser's built-in model from your own entries.",
+  rules: "Read directly from your own entries.",
+  refusal: "A fixed safety response, not generated.",
+};
+
+export default function AssistantCard({ patientId, embedded = false }) {
   const { scale, speak } = useContext(AccessibilityContext);
 
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
-  const [engine, setEngine] = useState(null);
+
+  const [gpu, setGpu] = useState(null); // null = still checking
+  const [promptApi, setPromptApi] = useState(null);
+  const [engineState, setEngineState] = useState("none"); // none | loading | ready | error
+  const [progress, setProgress] = useState(null);
+  const [modelId, setModelId] = useState(webllm.DEFAULT_MODEL);
+  const [error, setError] = useState("");
+  const [showOptions, setShowOptions] = useState(false);
+  // Which engine produced the answer on screen, and why it was not the best
+  // one available. Shown rather than swallowed.
+  const [answeredBy, setAnsweredBy] = useState(null);
+  const [degraded, setDegraded] = useState(null);
+  const [streaming, setStreaming] = useState(false);
+
   const live = useRef(true);
+
+  const start = useCallback(async (id) => {
+    // Set before loading, not after: the status line names the model, and
+    // claiming the wrong one is exactly the kind of quiet inaccuracy this panel
+    // is supposed to avoid.
+    setModelId(id);
+    setEngineState("loading");
+    setError("");
+    setProgress({ fraction: 0, text: "Starting…" });
+    try {
+      await webllm.prepare(id, (p) => {
+        if (live.current) setProgress(p);
+      });
+      if (!live.current) return;
+      setEngineState("ready");
+      setProgress(null);
+      setShowOptions(false);
+    } catch (e) {
+      if (!live.current) return;
+      setEngineState("error");
+      setProgress(null);
+      setError(
+        e?.message?.slice(0, 160) ||
+          "The model could not be loaded. Your records still answer questions below."
+      );
+    }
+  }, []);
 
   useEffect(() => {
     live.current = true;
-    availability().then((state) => {
-      if (live.current) setEngine(state);
-    });
+
+    (async () => {
+      const [supported, builtIn] = await Promise.all([
+        webllm.hasWebGPU(),
+        availability(),
+      ]);
+      if (!live.current) return;
+      setGpu(supported);
+      setPromptApi(builtIn);
+
+      if (webllm.ready()) {
+        setEngineState("ready");
+        setModelId(webllm.activeModel());
+        return;
+      }
+      if (!supported) return;
+
+      // Already downloaded and previously accepted: bring it back without
+      // asking again. The weights come from cache, so this is quick and costs
+      // no bandwidth.
+      const { model, consented } = await webllm.savedChoice();
+      if (!live.current || !consented) return;
+      setModelId(model);
+      if (await webllm.isCached(model)) {
+        if (live.current) start(model);
+      }
+    })();
+
     return () => {
       live.current = false;
     };
-  }, []);
+  }, [start]);
 
-  // A new patient means a new set of records; nothing from the last one should
-  // stay on screen.
   useEffect(() => {
     setAnswer("");
     setQuestion("");
+    setAnsweredBy(null);
+    setDegraded(null);
   }, [patientId]);
 
   async function send(text) {
     const q = (text ?? question).trim();
     if (!q || busy) return;
-
     setBusy(true);
+    setStreaming(false);
     setAnswer("");
+    setAnsweredBy(null);
+    setDegraded(null);
     try {
-      const final = await ask(patientId, q, (partial) => {
-        if (live.current) setAnswer(partial);
+      // Deliberately NOT rendering partial tokens.
+      //
+      // Streaming raw output to the screen shows the model's text before the
+      // safety filters have seen it. In testing, a small model produced "I've
+      // been taking 1000 mg of levodopa 3 times a day" — a fabricated dose,
+      // grounded in nothing in the record — and a streaming panel would have
+      // displayed it in full before the guard discarded it. A patient who has
+      // read that sentence has been misinformed regardless of what replaces it
+      // a second later. The token callback only drives the progress indicator.
+      const result = await ask(patientId, q, () => {
+        if (live.current) setStreaming(true);
       });
-      if (live.current) setAnswer(final);
+      if (!live.current) return;
+      setAnswer(result.text);
+      setAnsweredBy(result.engine);
+      setDegraded(result.degraded || null);
     } finally {
-      if (live.current) setBusy(false);
+      if (live.current) {
+        setBusy(false);
+        setStreaming(false);
+      }
     }
   }
 
-  const status = engineStatus(engine);
+  async function stop() {
+    await webllm.interrupt();
+  }
+
+  async function release() {
+    await webllm.unload();
+    if (!live.current) return;
+    setEngineState("none");
+    setAnswer("");
+  }
+
+  const chosen = webllm.modelInfo(modelId);
+  const status = describeEngine({ engineState, gpu, promptApi });
 
   return (
     <View
-      style={{
-        backgroundColor: "#ffffff",
-        borderRadius: 20,
-        borderWidth: 1,
-        borderColor: "#e2e8f0",
-        padding: 20,
-        marginBottom: 20,
-      }}
+      style={
+        embedded
+          ? { backgroundColor: "transparent" }
+          : {
+              backgroundColor: "#ffffff",
+              borderRadius: 20,
+              borderWidth: 1,
+              borderColor: "#e2e8f0",
+              padding: 20,
+              marginBottom: 20,
+            }
+      }
     >
-      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text
-            style={{
-              fontSize: 22 * scale,
-              lineHeight: 28 * scale,
-              fontWeight: "700",
-              color: "#0f172a",
-            }}
-          >
-            Ask about your records
-          </Text>
-          <Text
-            style={{
-              fontSize: 15 * scale,
-              lineHeight: 21 * scale,
-              color: "#475569",
-              marginTop: 2,
-            }}
-          >
-            Questions about what you have logged — symptoms, doses, meals,
-            activity. It cannot give medical advice.
-          </Text>
-        </View>
-      </View>
+      {embedded ? null : (
+        <Text
+          style={{
+            fontSize: 22 * scale,
+            lineHeight: 28 * scale,
+            fontWeight: "700",
+            color: "#0f172a",
+          }}
+        >
+          Ask about your records
+        </Text>
+      )}
+      <Text
+        style={{
+          fontSize: 15 * scale,
+          lineHeight: 21 * scale,
+          color: "#475569",
+          marginTop: 2,
+        }}
+      >
+        Questions about what you have logged — symptoms, doses, meals, activity.
+        It cannot give medical advice.
+      </Text>
 
-      {/* Where the answer is computed, stated plainly. */}
+      {/* Which engine is answering, always visible */}
       <View
         style={{
           flexDirection: "row",
-          alignItems: "center",
+          alignItems: "flex-start",
           backgroundColor: status.bg,
           borderRadius: 10,
-          paddingVertical: 8,
-          paddingHorizontal: 10,
+          paddingVertical: 9,
+          paddingHorizontal: 11,
           marginTop: 12,
         }}
       >
-        <Ionicons name={status.icon} size={16} color={status.ink} />
+        <Ionicons name={status.icon} size={17} color={status.ink} />
         <Text
           style={{
-            marginLeft: 6,
+            marginLeft: 7,
             flex: 1,
             minWidth: 0,
             fontSize: 13 * scale,
@@ -115,11 +226,145 @@ export default function AssistantCard({ patientId }) {
             fontWeight: "600",
           }}
         >
-          {status.label}
+          {engineState === "ready"
+            ? `Answering on this device with ${chosen.detail}. Nothing you ask is sent anywhere.`
+            : status.label}
         </Text>
       </View>
 
-      <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
+      {/* Download consent. Never automatic — this is someone's data plan. */}
+      {gpu && engineState === "none" ? (
+        <View style={{ marginTop: 12 }}>
+          {showOptions ? (
+            <View>
+              {webllm.MODELS.map((m) => (
+                <Pressable
+                  key={m.id}
+                  onPress={() => start(m.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Load ${m.label}, ${m.megabytes} megabytes`}
+                  style={{
+                    minHeight: 64,
+                    justifyContent: "center",
+                    paddingHorizontal: 14,
+                    marginBottom: 8,
+                    borderRadius: 12,
+                    backgroundColor: "#f8fafc",
+                    borderWidth: 2,
+                    borderColor: "#cbd5e1",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: 16 * scale,
+                      fontWeight: "700",
+                      color: "#0f172a",
+                    }}
+                  >
+                    {m.label} — {m.megabytes} MB
+                  </Text>
+                  <Text style={{ fontSize: 13 * scale, color: "#475569" }}>
+                    {m.detail}
+                  </Text>
+                  {m.note ? (
+                    <Text style={{ fontSize: 12.5 * scale, color: "#64748b" }}>
+                      {m.note}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              ))}
+              <Text
+                style={{
+                  fontSize: 12.5 * scale,
+                  lineHeight: 17 * scale,
+                  color: "#64748b",
+                }}
+              >
+                Downloaded once and kept on this device. After that it works with
+                no connection at all.
+              </Text>
+            </View>
+          ) : (
+            <Pressable
+              onPress={() => setShowOptions(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Set up the on-device assistant"
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                minHeight: 60,
+                paddingHorizontal: 15,
+                borderRadius: 12,
+                backgroundColor: "#eef2ff",
+                borderWidth: 1,
+                borderColor: "#c7d2fe",
+              }}
+            >
+              <Ionicons name="hardware-chip" size={22} color="#3730a3" />
+              <Text
+                style={{
+                  marginLeft: 9,
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: 15 * scale,
+                  lineHeight: 20 * scale,
+                  fontWeight: "700",
+                  color: "#3730a3",
+                }}
+              >
+                Set up the on-device assistant for fuller answers
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      ) : null}
+
+      {/* Download progress */}
+      {engineState === "loading" ? (
+        <View style={{ marginTop: 12 }}>
+          <View
+            style={{
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: "#e2e8f0",
+              overflow: "hidden",
+            }}
+          >
+            <View
+              style={{
+                width: `${Math.round((progress?.fraction || 0) * 100)}%`,
+                height: 8,
+                backgroundColor: "#4338ca",
+              }}
+            />
+          </View>
+          <Text
+            style={{
+              fontSize: 12.5 * scale,
+              color: "#475569",
+              marginTop: 6,
+            }}
+            numberOfLines={2}
+          >
+            {progress?.text || "Preparing…"}
+          </Text>
+        </View>
+      ) : null}
+
+      {error ? (
+        <Text
+          style={{
+            fontSize: 13 * scale,
+            lineHeight: 18 * scale,
+            color: "#9a3412",
+            marginTop: 10,
+          }}
+        >
+          {error}
+        </Text>
+      ) : null}
+
+      <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 14 }}>
         {SUGGESTIONS.map((s) => (
           <Pressable
             key={s}
@@ -148,7 +393,7 @@ export default function AssistantCard({ patientId }) {
         ))}
       </View>
 
-      <View style={{ flexDirection: "row", marginTop: 4 }}>
+      <View style={{ flexDirection: "row" }}>
         <TextInput
           value={question}
           onChangeText={setQuestion}
@@ -169,34 +414,85 @@ export default function AssistantCard({ patientId }) {
             borderRadius: 12,
           }}
         />
-        <Pressable
-          onPress={() => send()}
-          disabled={busy || !question.trim()}
-          accessibilityRole="button"
-          accessibilityLabel="Ask"
-          style={{
-            minHeight: 56,
-            paddingHorizontal: 20,
-            marginLeft: 8,
-            alignItems: "center",
-            justifyContent: "center",
-            borderRadius: 12,
-            backgroundColor: busy || !question.trim() ? "#94a3b8" : "#0f172a",
-          }}
-        >
-          {busy ? (
-            <ActivityIndicator color="#ffffff" />
-          ) : (
-            <Text
-              style={{ fontSize: 16 * scale, fontWeight: "700", color: "#ffffff" }}
-            >
-              Ask
-            </Text>
-          )}
-        </Pressable>
+        {busy && engineState === "ready" ? (
+          <Pressable
+            onPress={stop}
+            accessibilityRole="button"
+            accessibilityLabel="Stop generating"
+            style={{
+              minHeight: 56,
+              paddingHorizontal: 18,
+              marginLeft: 8,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 12,
+              backgroundColor: "#991b1b",
+            }}
+          >
+            <Ionicons name="stop" size={20} color="#ffffff" />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => send()}
+            disabled={busy || !question.trim()}
+            accessibilityRole="button"
+            accessibilityLabel="Ask"
+            style={{
+              minHeight: 56,
+              paddingHorizontal: 20,
+              marginLeft: 8,
+              alignItems: "center",
+              justifyContent: "center",
+              borderRadius: 12,
+              backgroundColor: busy || !question.trim() ? "#94a3b8" : "#0f172a",
+            }}
+          >
+            {busy ? (
+              <ActivityIndicator color="#ffffff" />
+            ) : (
+              <Text
+                style={{
+                  fontSize: 16 * scale,
+                  fontWeight: "700",
+                  color: "#ffffff",
+                }}
+              >
+                Ask
+              </Text>
+            )}
+          </Pressable>
+        )}
       </View>
 
-      {answer ? (
+      {busy ? (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginTop: 14,
+            padding: 14,
+            borderRadius: 14,
+            backgroundColor: "#f8fafc",
+            borderWidth: 1,
+            borderColor: "#cbd5e1",
+          }}
+        >
+          <ActivityIndicator color="#334155" />
+          <Text
+            style={{
+              marginLeft: 10,
+              fontSize: 15 * scale,
+              color: "#475569",
+            }}
+          >
+            {streaming
+              ? "Writing, then checking it against your records…"
+              : "Reading your records…"}
+          </Text>
+        </View>
+      ) : null}
+
+      {!busy && answer ? (
         <View
           style={{
             marginTop: 14,
@@ -207,7 +503,7 @@ export default function AssistantCard({ patientId }) {
             borderColor: "#cbd5e1",
           }}
         >
-          <ScrollView style={{ maxHeight: 280 }}>
+          <ScrollView style={{ maxHeight: 300 }}>
             <Text
               style={{
                 fontSize: 16 * scale,
@@ -219,7 +515,7 @@ export default function AssistantCard({ patientId }) {
             </Text>
           </ScrollView>
 
-          <View style={{ flexDirection: "row", marginTop: 10 }}>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 10 }}>
             <Pressable
               onPress={() => speak(answer, "assistant-answer")}
               accessibilityRole="button"
@@ -229,6 +525,7 @@ export default function AssistantCard({ patientId }) {
                 alignItems: "center",
                 minHeight: 44,
                 paddingHorizontal: 12,
+                marginRight: 8,
                 borderRadius: 10,
                 backgroundColor: "#ffffff",
                 borderWidth: 1,
@@ -247,7 +544,50 @@ export default function AssistantCard({ patientId }) {
                 Read aloud
               </Text>
             </Pressable>
+
+            {engineState === "ready" ? (
+              <Pressable
+                onPress={release}
+                accessibilityRole="button"
+                accessibilityLabel="Free the memory the model is using"
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  minHeight: 44,
+                  paddingHorizontal: 12,
+                  borderRadius: 10,
+                  backgroundColor: "#ffffff",
+                  borderWidth: 1,
+                  borderColor: "#cbd5e1",
+                }}
+              >
+                <Ionicons name="power" size={18} color="#334155" />
+                <Text
+                  style={{
+                    marginLeft: 6,
+                    fontSize: 14 * scale,
+                    fontWeight: "600",
+                    color: "#334155",
+                  }}
+                >
+                  Free memory
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
+
+          {degraded ? (
+            <Text
+              style={{
+                fontSize: 12.5 * scale,
+                lineHeight: 17 * scale,
+                color: "#9a3412",
+                marginTop: 10,
+              }}
+            >
+              {degraded} Answered from your records instead.
+            </Text>
+          ) : null}
 
           <Text
             style={{
@@ -257,8 +597,8 @@ export default function AssistantCard({ patientId }) {
               marginTop: 10,
             }}
           >
-            Built from your own entries. Not medical advice, and never a reason
-            to change your medication.
+            {ENGINE_LABEL[answeredBy] || "Built from your own entries."} Not
+            medical advice, and never a reason to change your medication.
           </Text>
         </View>
       ) : null}
@@ -266,30 +606,47 @@ export default function AssistantCard({ patientId }) {
   );
 }
 
-function engineStatus(engine) {
-  if (!engine) {
-    return { label: "Checking for an on-device model…", icon: "ellipsis-horizontal", bg: "#f1f5f9", ink: "#475569" };
-  }
-  if (engine.state === "available") {
+// The four honest states, in the order the ladder tries them.
+function describeEngine({ engineState, gpu, promptApi }) {
+  if (engineState === "loading") {
     return {
-      label: "Answering on this device. Nothing you ask is sent anywhere.",
+      label: "Loading the model onto this device…",
+      icon: "cloud-download",
+      bg: "#eef2ff",
+      ink: "#3730a3",
+    };
+  }
+  if (engineState === "ready") {
+    return { label: "", icon: "shield-checkmark", bg: "#dcfce7", ink: "#166534" };
+  }
+  if (promptApi?.state === "available") {
+    return {
+      label:
+        "Answering with this browser's built-in model. Nothing you ask is sent anywhere.",
       icon: "shield-checkmark",
       bg: "#dcfce7",
       ink: "#166534",
     };
   }
-  if (engine.state === "downloading" || engine.state === "downloadable") {
+  if (gpu === null) {
     return {
-      label: "The on-device model is still downloading. Answers come straight from your records until it is ready.",
-      icon: "cloud-download",
-      bg: "#ffedd5",
-      ink: "#9a3412",
+      label: "Checking what this device can run…",
+      icon: "ellipsis-horizontal",
+      bg: "#f1f5f9",
+      ink: "#475569",
+    };
+  }
+  if (gpu === false) {
+    return {
+      label:
+        "This device has no WebGPU, so answers are read straight from your records.",
+      icon: "document-text",
+      bg: "#f1f5f9",
+      ink: "#475569",
     };
   }
   return {
-    label:
-      engine.reason ||
-      "No on-device model here, so answers are read straight from your records.",
+    label: "Answers are read straight from your records.",
     icon: "document-text",
     bg: "#f1f5f9",
     ink: "#475569",

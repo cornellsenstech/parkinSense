@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { NavigationContainer } from "@react-navigation/native";
+import AssistantDock from "./components/AssistantDock";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useEffect, useState } from "react";
 import "./global.css";
@@ -132,6 +133,10 @@ export default function App() {
     return (
       <NavigationContainer key={role}>
         {role === "doctor" ? <DoctorPortal /> : <PatientPortal />}
+        {/* Outside the navigator, so the dock persists across tab changes
+            instead of unmounting and losing a loaded model every time the
+            patient moves between screens. */}
+        <AssistantDock />
       </NavigationContainer>
     );
   }
