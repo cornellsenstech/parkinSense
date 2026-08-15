@@ -1,0 +1,39 @@
+# Normalise line endings so the repo is identical on macOS, Linux and Windows.
+#
+# Without this, every file written on Windows lands in a diff as a wholesale
+# rewrite when a macOS contributor touches it, and `git status` reports files as
+# modified that nobody edited. Text is stored LF in the repository and checked
+# out with the platform's native endings.
+* text=auto
+
+# Always LF regardless of platform: shell scripts break with CRLF, and these are
+# read by tools rather than editors.
+*.sh        text eol=lf
+*.mjs       text eol=lf
+*.json      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+.gitattributes text eol=lf
+.gitignore     text eol=lf
+
+# Source is stored LF; editors on Windows handle it fine and it keeps diffs
+# between contributors on different machines to the lines actually changed.
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.css       text eol=lf
+*.html      text eol=lf
+*.md        text eol=lf
+
+# Binary: never touch these.
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.webp      binary
+*.ico       binary
+*.ttf       binary
+*.otf       binary
+*.woff      binary
+*.woff2     binary

@@ -1,6 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useContext, useState } from "react";
-import { Platform, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AccessibilityContext } from "../context/AccessibilityContext";
 import { RoleContext } from "../context/RoleContext";
 import AssistantCard from "./AssistantCard";
@@ -15,27 +23,48 @@ import { useWide } from "./layout";
 //
 // Collapsed by default. A panel that opens itself would cover the reading a
 // patient came to the screen to see.
-const TAB_BAR_CLEARANCE = 78;
+
+// Height of the bottom tab bar from App.js's tabBarStyle. The dock has to clear
+// it, and the tab bar itself sits above the device's own bottom inset.
+const TAB_BAR_HEIGHT = 68;
+const GAP = 10;
 
 export default function AssistantDock() {
   const { role, user } = useContext(RoleContext);
   const { scale } = useContext(AccessibilityContext);
   const wide = useWide();
+  const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const [open, setOpen] = useState(false);
 
   // Patient portal only. The assistant reads one person's records, and the
   // clinician portal has no single patient in scope at the roster level.
   if (role !== "patient" || !user) return null;
 
+  // Clearance is computed, not hardcoded. A fixed 78px sat underneath the home
+  // indicator on an iPhone and left a visible gap on a desktop browser, because
+  // the bottom inset is 34px on one and 0 on the other.
+  const bottom = TAB_BAR_HEIGHT + insets.bottom + GAP;
+
   // `position: fixed` pins the dock to the viewport so it survives the scroll
   // of whichever screen is mounted underneath. On native this falls back to
   // absolute, which is the correct behaviour there.
   const anchor = {
     position: Platform.OS === "web" ? "fixed" : "absolute",
-    right: wide ? 24 : 12,
-    bottom: TAB_BAR_CLEARANCE,
+    right: (wide ? 24 : 12) + insets.right,
+    bottom,
     zIndex: 60,
   };
+
+  // Measured against the real window rather than a percentage. A percentage of
+  // a fixed-position element resolves against the viewport, which on mobile
+  // browsers changes height as the URL bar hides — the panel would resize under
+  // the reader mid-scroll. Subtracting the chrome we already know about gives a
+  // stable number.
+  const maxHeight = Math.max(
+    260,
+    windowHeight - bottom - insets.top - (wide ? 40 : 20)
+  );
 
   if (!open) {
     return (
@@ -78,9 +107,11 @@ export default function AssistantDock() {
     <View
       style={{
         ...anchor,
-        left: wide ? undefined : 12,
+        // Narrow screens get the full width minus the side insets; wide screens
+        // get a fixed column so the panel does not stretch across a monitor.
+        left: wide ? undefined : 12 + insets.left,
         width: wide ? 420 : undefined,
-        maxHeight: "76%",
+        maxHeight,
         borderRadius: 20,
         backgroundColor: "#ffffff",
         borderWidth: 1,

@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { NavigationContainer } from "@react-navigation/native";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import AssistantDock from "./components/AssistantDock";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useEffect, useState } from "react";
@@ -142,12 +143,19 @@ export default function App() {
   }
 
   return (
-    <AccessibilityProvider>
-      <RoleContext.Provider
-        value={{ role, setRole, user, setUser, reporter, setReporter }}
-      >
-        {renderBody()}
-      </RoleContext.Provider>
-    </AccessibilityProvider>
+    // SafeAreaProvider at the root rather than relying on the one React
+    // Navigation mounts around the tab view. Anything rendered as a sibling of
+    // the navigator — the assistant dock — sits outside that inner provider and
+    // would throw on useSafeAreaInsets(). It supplies context only; it adds no
+    // padding of its own, so nothing else in the tree shifts.
+    <SafeAreaProvider>
+      <AccessibilityProvider>
+        <RoleContext.Provider
+          value={{ role, setRole, user, setUser, reporter, setReporter }}
+        >
+          {renderBody()}
+        </RoleContext.Provider>
+      </AccessibilityProvider>
+    </SafeAreaProvider>
   );
 }
